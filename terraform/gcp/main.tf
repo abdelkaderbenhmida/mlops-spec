@@ -17,8 +17,8 @@ provider "google" {
 }
 
 module "network" {
-  source  = "../modules/network"
-  cloud   = "gcp"
+  source      = "../modules/network"
+  cloud       = "gcp"
   name_prefix = var.name_prefix
 
   cidr_block     = "10.0.1.0/24"
@@ -40,46 +40,46 @@ locals {
 }
 
 module "cp" {
-  source       = "../modules/vm"
-  cloud        = "gcp"
-  name_prefix  = var.name_prefix
-  vm_name      = "${var.name_prefix}-k8s-cp"
-  machine_type = "e2-medium"
-  zone         = var.zone
+  source         = "../modules/vm"
+  cloud          = "gcp"
+  name_prefix    = var.name_prefix
+  vm_name        = "${var.name_prefix}-k8s-cp"
+  machine_type   = "e2-medium"
+  zone           = var.zone
   gcp_project_id = var.project_id
 
-  subnet_id    = module.network.subnet_id
-  internal_ip  = local.static_ips.cp
+  subnet_id      = module.network.subnet_id
+  internal_ip    = local.static_ips.cp
   ssh_public_key = var.ssh_public_key
-  tags         = ["k8s", "control-plane"]
+  tags           = ["k8s", "control-plane"]
 }
 
 module "w1" {
-  source       = "../modules/vm"
-  cloud        = "gcp"
-  name_prefix  = var.name_prefix
-  vm_name      = "${var.name_prefix}-k8s-w1"
-  machine_type = "e2-medium"
-  zone         = var.zone
+  source         = "../modules/vm"
+  cloud          = "gcp"
+  name_prefix    = var.name_prefix
+  vm_name        = "${var.name_prefix}-k8s-w1"
+  machine_type   = "e2-medium"
+  zone           = var.zone
   gcp_project_id = var.project_id
 
-  subnet_id    = module.network.subnet_id
-  internal_ip  = local.static_ips.w1
+  subnet_id      = module.network.subnet_id
+  internal_ip    = local.static_ips.w1
   ssh_public_key = var.ssh_public_key
-  tags         = ["k8s", "worker"]
+  tags           = ["k8s", "worker"]
 }
 
 module "w2" {
-  source       = "../modules/vm"
-  cloud        = "gcp"
-  name_prefix  = var.name_prefix
-  vm_name      = "${var.name_prefix}-k8s-w2"
-  machine_type = "e2-medium"
-  zone         = var.zone
+  source         = "../modules/vm"
+  cloud          = "gcp"
+  name_prefix    = var.name_prefix
+  vm_name        = "${var.name_prefix}-k8s-w2"
+  machine_type   = "e2-medium"
+  zone           = var.zone
   gcp_project_id = var.project_id
 
-  subnet_id    = module.network.subnet_id
-  internal_ip  = local.static_ips.w2
+  subnet_id      = module.network.subnet_id
+  internal_ip    = local.static_ips.w2
   ssh_public_key = var.ssh_public_key
-  tags         = ["k8s", "worker"]
+  tags           = ["k8s", "worker"]
 }

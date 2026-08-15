@@ -1,3 +1,16 @@
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 5.0"
+    }
+  }
+}
+
 locals {
   gcp = var.cloud == "gcp" ? 1 : 0
   oci = var.cloud == "oci" ? 1 : 0
@@ -12,31 +25,31 @@ data "google_compute_image" "ubuntu" {
   family  = var.gcp_image_family
 }
 
-data "oci_core_availability_domains" "ads" {
+data "oci_identity_availability_domains" "ads" {
   count          = local.oci
   compartment_id = var.oci_compartment_id
 }
 
 data "oci_core_images" "ubuntu" {
-  count                   = local.oci
-  compartment_id          = var.oci_compartment_id
-  operating_system        = "Canonical Ubuntu"
+  count                    = local.oci
+  compartment_id           = var.oci_compartment_id
+  operating_system         = "Canonical Ubuntu"
   operating_system_version = var.oci_image_version
-  shape                   = var.oci_shape
-  sort_by                 = "TIMECREATED"
-  sort_order              = "DESC"
+  shape                    = var.oci_shape
+  sort_by                  = "TIMECREATED"
+  sort_order               = "DESC"
 }
 
 # ---------------------------------------------------------------
 # GCP instance
 # ---------------------------------------------------------------
 resource "google_compute_instance" "vm" {
-  count                    = local.gcp
-  name                     = var.vm_name
-  machine_type             = var.machine_type
-  zone                     = var.zone
-  project                  = var.gcp_project_id
-  tags                     = var.tags
+  count                     = local.gcp
+  name                      = var.vm_name
+  machine_type              = var.machine_type
+  zone                      = var.zone
+  project                   = var.gcp_project_id
+  tags                      = var.tags
   allow_stopping_for_update = true
 
   boot_disk {
@@ -63,11 +76,11 @@ resource "google_compute_instance" "vm" {
 # OCI instance
 # ---------------------------------------------------------------
 resource "oci_core_instance" "vm" {
-  count                = local.oci
-  compartment_id       = var.oci_compartment_id
-  availability_domain  = var.availability_domain != "" ? var.availability_domain : data.oci_core_availability_domains.ads[0].availability_domains[0].name
-  display_name         = var.vm_name
-  shape                = var.oci_shape
+  count               = local.oci
+  compartment_id      = var.oci_compartment_id
+  availability_domain = var.availability_domain != "" ? var.availability_domain : data.oci_identity_availability_domains.ads[0].availability_domains[0].name
+  display_name        = var.vm_name
+  shape               = var.oci_shape
 
   shape_config {
     ocpus         = var.oci_ocpus

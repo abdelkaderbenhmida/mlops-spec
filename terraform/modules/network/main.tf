@@ -1,3 +1,16 @@
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 5.0"
+    }
+  }
+}
+
 locals {
   gcp = var.cloud == "gcp" ? 1 : 0
   oci = var.cloud == "oci" ? 1 : 0
@@ -14,20 +27,20 @@ resource "google_compute_network" "vpc" {
 }
 
 resource "google_compute_subnetwork" "subnet" {
-  count         = local.gcp
-  name          = "${var.name_prefix}-subnet"
-  project       = var.gcp_project_id
-  region        = var.region
-  network       = google_compute_network.vpc[0].id
-  ip_cidr_range = var.cidr_block
+  count                    = local.gcp
+  name                     = "${var.name_prefix}-subnet"
+  project                  = var.gcp_project_id
+  region                   = var.region
+  network                  = google_compute_network.vpc[0].id
+  ip_cidr_range            = var.cidr_block
   private_ip_google_access = true
 }
 
 resource "google_compute_firewall" "allow_ssh" {
-  count       = local.gcp
-  name        = "${var.name_prefix}-allow-ssh"
-  network     = google_compute_network.vpc[0].name
-  project     = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-ssh"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["22"]
@@ -36,10 +49,10 @@ resource "google_compute_firewall" "allow_ssh" {
 }
 
 resource "google_compute_firewall" "allow_http" {
-  count       = local.gcp
-  name        = "${var.name_prefix}-allow-http"
-  network     = google_compute_network.vpc[0].name
-  project     = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-http"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["80"]
@@ -48,10 +61,10 @@ resource "google_compute_firewall" "allow_http" {
 }
 
 resource "google_compute_firewall" "allow_https" {
-  count       = local.gcp
-  name        = "${var.name_prefix}-allow-https"
-  network     = google_compute_network.vpc[0].name
-  project     = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-https"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["443"]
@@ -60,10 +73,10 @@ resource "google_compute_firewall" "allow_https" {
 }
 
 resource "google_compute_firewall" "allow_k8s_api" {
-  count       = local.gcp
-  name        = "${var.name_prefix}-allow-k8s-api"
-  network     = google_compute_network.vpc[0].name
-  project     = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-k8s-api"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["6443"]
@@ -72,10 +85,10 @@ resource "google_compute_firewall" "allow_k8s_api" {
 }
 
 resource "google_compute_firewall" "allow_nodeports" {
-  count       = local.gcp
-  name        = "${var.name_prefix}-allow-nodeports"
-  network     = google_compute_network.vpc[0].name
-  project     = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-nodeports"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["30000-32767"]
@@ -84,10 +97,10 @@ resource "google_compute_firewall" "allow_nodeports" {
 }
 
 resource "google_compute_firewall" "allow_node_exporter" {
-  count         = local.gcp
-  name          = "${var.name_prefix}-allow-node-exporter"
-  network       = google_compute_network.vpc[0].name
-  project       = var.gcp_project_id
+  count   = local.gcp
+  name    = "${var.name_prefix}-allow-node-exporter"
+  network = google_compute_network.vpc[0].name
+  project = var.gcp_project_id
   allow {
     protocol = "tcp"
     ports    = ["9100"]
@@ -143,23 +156,21 @@ resource "oci_core_security_list" "sl" {
       protocol = "6"
       source   = "0.0.0.0/0"
       tcp_options {
-        destination_port_range {
-          min = ingress_security_rules.value
-          max = ingress_security_rules.value
-        }
+        min = ingress_security_rules.value
+        max = ingress_security_rules.value
       }
     }
   }
 }
 
 resource "oci_core_subnet" "subnet" {
-  count                = local.oci
-  compartment_id       = var.oci_compartment_id
-  vcn_id               = oci_core_vcn.vcn[0].id
-  cidr_block           = var.cidr_block
-  display_name         = "${var.name_prefix}-subnet"
-  dns_label            = "sub${replace(var.name_prefix, "-", "")}"
-  route_table_id       = oci_core_route_table.rt[0].id
-  security_list_ids    = [oci_core_security_list.sl[0].id]
+  count                      = local.oci
+  compartment_id             = var.oci_compartment_id
+  vcn_id                     = oci_core_vcn.vcn[0].id
+  cidr_block                 = var.cidr_block
+  display_name               = "${var.name_prefix}-subnet"
+  dns_label                  = "sub${replace(var.name_prefix, "-", "")}"
+  route_table_id             = oci_core_route_table.rt[0].id
+  security_list_ids          = [oci_core_security_list.sl[0].id]
   prohibit_public_ip_on_vnic = false
 }
