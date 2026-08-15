@@ -1,0 +1,3 @@
+---
+# Defaults for the docker role.
+docker_ce_version: 5:26.1.4-1~ubuntu.22.04~jammy

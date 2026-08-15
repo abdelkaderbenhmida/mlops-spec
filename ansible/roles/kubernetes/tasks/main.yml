@@ -1,0 +1,180 @@
+---
+# Kubernetes role: kubeadm 1.28, kubelet, kubectl, swap off,
+# control-plane init + Calico CNI + worker join. Idempotent.
+- name: Disable swap
+  command: swapoff -a
+  changed_when: false
+
+- name: Remove swap entries from /etc/fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s.*)$'
+    replace: '# \1'
+  register: fstab_swap
+
+- name: Reload systemd after fstab change
+  systemd:
+    daemon_reload: true
+  when: fstab_swap.changed
+
+- name: Load kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Persist kernel modules
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Apply sysctl settings for Kubernetes
+  copy:
+    dest: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+  register: sysctl_conf
+
+- name: Reload sysctl
+  command: sysctl --system
+  when: sysctl_conf.changed
+  changed_when: false
+
+- name: Ensure apt keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Kubernetes apt key
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+    state: present
+    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add Kubernetes apt repository
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+    state: present
+    update_cache: true
+
+- name: Install kubeadm/kubelet/kubectl 1.28
+  apt:
+    name:
+      - kubeadm={{ kubernetes_version }}-1.1
+      - kubelet={{ kubernetes_version }}-1.1
+      - kubectl={{ kubernetes_version }}-1.1
+    state: present
+    update_cache: true
+
+- name: Pin kubeadm/kubelet/kubectl
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+
+- name: Configure containerd to use systemd cgroup driver
+  copy:
+    dest: /etc/containerd/config.toml
+    content: |
+      version = 2
+      [plugins."io.containerd.grpc.v1.cri"]
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+  notify: restart containerd
+
+- name: Enable and start kubelet
+  systemd:
+    name: kubelet
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# ---------------------------------------------------------------------------
+# Control plane (single CP, runs once)
+# ---------------------------------------------------------------------------
+- name: Set control plane host
+  set_fact:
+    k8s_cp_host: "{{ groups['gcp_k8s'][0] }}"
+
+- name: "kubeadm init on control plane ({{ k8s_cp_host }})"
+  command: >
+    kubeadm init
+    --pod-network-cidr=192.168.0.0/16
+    --apiserver-advertise-address={{ k8s_cp_internal_ip }}
+    --kubernetes-version={{ kubernetes_version }}
+  args:
+    creates: /etc/kubernetes/admin.conf
+  register: kubeadm_init
+  when: inventory_hostname == k8s_cp_host
+
+- name: Configure kubectl for ubuntu user on CP
+  command: >
+    sh -c "mkdir -p /home/ubuntu/.kube
+    && cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    && chown -R ubuntu:ubuntu /home/ubuntu/.kube"
+  args:
+    creates: /home/ubuntu/.kube/config
+  when: inventory_hostname == k8s_cp_host
+
+- name: Install Calico CNI
+  become_user: ubuntu
+  command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.2/manifests/calico.yaml
+  register: calico_apply
+  changed_when: "'created' in calico_apply.stdout"
+  when: inventory_hostname == k8s_cp_host
+
+- name: Generate kubeadm join command on CP
+  command: kubeadm token create --print-join-command
+  register: join_command
+  changed_when: false
+  when: inventory_hostname == k8s_cp_host
+
+- name: Expose join command to all hosts
+  set_fact:
+    k8s_join_command: "{{ hostvars[k8s_cp_host].join_command.stdout | default('') }}"
+  when: inventory_hostname in groups['gcp_k8s']
+
+# ---------------------------------------------------------------------------
+# Workers
+# ---------------------------------------------------------------------------
+- name: Join workers to the cluster
+  command: "{{ k8s_join_command }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+  register: kubeadm_join
+  when:
+    - inventory_hostname in groups['gcp_k8s']
+    - inventory_hostname != k8s_cp_host
+
+- name: Wait for all nodes to become Ready
+  become_user: ubuntu
+  command: kubectl wait --for=condition=Ready node --all --timeout=300s
+  changed_when: false
+  when:
+    - inventory_hostname == k8s_cp_host
+    - kubeadm_init.changed or kubeadm_join.changed
+
+- name: Show cluster nodes
+  become_user: ubuntu
+  command: kubectl get nodes -o wide
+  changed_when: false
+  register: nodes
+  when: inventory_hostname == k8s_cp_host
+
+- debug:
+    var: nodes.stdout_lines
+  when:
+    - inventory_hostname == k8s_cp_host
+    - nodes.stdout_lines is defined

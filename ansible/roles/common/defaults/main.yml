@@ -1,0 +1,22 @@
+---
+# Defaults for the common role.
+common_packages:
+  - git
+  - curl
+  - wget
+  - unzip
+  - ca-certificates
+  - gnupg
+  - software-properties-common
+
+node_exporter_version: 1.7.0
+
+# Host-level UFW allowance. Cloud firewalls (GCP/OCI) are the real policy;
+# UFW here is defense in depth. Per the spec the node exporter port is
+# restricted to the OCI monitoring IP at the cloud-firewall layer.
+ufw_allow_ports:
+  - "22"
+  - "9100"
+  - "5000"
+  - "9090"
+  - "3000"
