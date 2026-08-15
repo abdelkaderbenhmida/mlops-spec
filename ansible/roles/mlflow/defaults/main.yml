@@ -1,0 +1,14 @@
+---
+# Defaults for the mlflow role.
+mlflow_image: ghcr.io/mlflow/mlflow:v2.10.0
+mlflow_port: 5000
+mlflow_host: 0.0.0.0
+
+# MLflow backend store database
+mlflow_db_name: mlflow
+mlflow_db_user: mlflow
+mlflow_db_password: "{{ lookup('env', 'MLFLOW_DB_PASSWORD') | default('mlflow', true) }}"
+mlflow_db_host: 127.0.0.1
+mlflow_db_port: 5432
+
+mlflow_artifact_root: /mlflow/artifacts

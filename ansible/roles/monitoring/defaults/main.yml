@@ -1,0 +1,19 @@
+---
+# Defaults for the monitoring role.
+prometheus_version: 2.51.0
+grafana_image: grafana/grafana:10.3.3
+
+prometheus_port: 9090
+grafana_port: 3000
+
+# Scrape targets. Overridden by the playbook from Terraform outputs.
+prometheus_scrape_targets:
+  node_gcp:
+    - "gcp-k8s-cp:9100"
+    - "gcp-k8s-w1:9100"
+    - "gcp-k8s-w2:9100"
+  node_oci:
+    - "oci-training:9100"
+    - "oci-monitoring:9100"
+  churn_api:
+    - "gcp-lb:80"
