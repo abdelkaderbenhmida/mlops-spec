@@ -1,0 +1,15 @@
+---
+# Kubernetes cluster playbook: runs common, docker, kubernetes on GCP VMs.
+# Usage: ansible-playbook -i inventory/hosts.yml k8s.yml
+- name: Bootstrap GCP servers
+  hosts: gcp_k8s
+  become: true
+  roles:
+    - common
+    - docker
+
+- name: Configure Kubernetes cluster
+  hosts: gcp_k8s
+  become: true
+  roles:
+    - kubernetes

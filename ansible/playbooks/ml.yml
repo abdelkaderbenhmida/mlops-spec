@@ -1,0 +1,21 @@
+---
+# ML playbook: runs mlflow on oci-training and training role on oci-training.
+# Usage: ansible-playbook -i inventory/hosts.yml ml.yml
+- name: Bootstrap OCI training server
+  hosts: oci-training
+  become: true
+  roles:
+    - common
+    - docker
+
+- name: Deploy MLflow
+  hosts: oci-training
+  become: true
+  roles:
+    - mlflow
+
+- name: Prepare training environment
+  hosts: oci-training
+  become: true
+  roles:
+    - training
