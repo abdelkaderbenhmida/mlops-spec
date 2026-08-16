@@ -1,0 +1,11 @@
+# QA test dependencies (unpinned so wheels exist for the local Python).
+pytest
+httpx
+fastapi
+pydantic
+sqlalchemy
+prometheus-fastapi-instrumentator
+pandas
+scikit-learn
+mlflow
+pyyaml
