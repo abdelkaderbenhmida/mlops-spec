@@ -1,1 +1,4 @@
 .worktrees/
+
+# Ralph loop state
+.ralph/
