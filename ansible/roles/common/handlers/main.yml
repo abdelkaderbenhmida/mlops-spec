@@ -1,0 +1,11 @@
+---
+# Common role handlers.
+- name: enable ufw
+  community.general.ufw:
+    state: enabled
+
+- name: restart node_exporter
+  systemd:
+    name: node_exporter
+    state: restarted
+    daemon_reload: true

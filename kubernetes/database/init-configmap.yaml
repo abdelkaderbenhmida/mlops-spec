@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: mlops
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS predictions (
+      id SERIAL PRIMARY KEY,
+      input_json JSONB NOT NULL,
+      prediction INTEGER NOT NULL,
+      probability FLOAT NOT NULL,
+      created_at TIMESTAMP DEFAULT now()
+    );

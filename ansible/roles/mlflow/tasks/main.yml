@@ -1,0 +1,56 @@
+---
+# MLflow role: run `mlflow server` as a Docker container on oci-training.
+# Backend store = PostgreSQL (local container), artifact store = /mlflow/artifacts.
+# Idempotent — safe to re-run.
+- name: Create MLflow directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ mlflow_artifact_root }}"
+    - /opt/mlflow
+
+- name: Run MLflow Postgres database container
+  docker_container:
+    name: mlflow-db
+    image: postgres:16
+    restart_policy: unless-stopped
+    state: started
+    env:
+      POSTGRES_DB: "{{ mlflow_db_name }}"
+      POSTGRES_USER: "{{ mlflow_db_user }}"
+      POSTGRES_PASSWORD: "{{ mlflow_db_password }}"
+    ports:
+      - "127.0.0.1:{{ mlflow_db_port }}:5432"
+    volumes:
+      - mlflow-pgdata:/var/lib/postgresql/data
+
+- name: Run MLflow server container
+  docker_container:
+    name: mlflow
+    image: "{{ mlflow_image }}"
+    restart_policy: unless-stopped
+    state: started
+    env:
+      MLFLOW_TRACKING_URI: "http://{{ mlflow_host }}:{{ mlflow_port }}"
+    ports:
+      - "{{ mlflow_port }}:5000"
+    volumes:
+      - "{{ mlflow_artifact_root }}:{{ mlflow_artifact_root }}"
+    command: >
+      mlflow server
+      --host {{ mlflow_host }}
+      --port 5000
+      --backend-store-uri postgresql://{{ mlflow_db_user }}:{{ mlflow_db_password }}@{{ mlflow_db_host }}:{{ mlflow_db_port }}/{{ mlflow_db_name }}
+      --default-artifact-root {{ mlflow_artifact_root }}
+      --workers 1
+
+- name: Wait for MLflow to be reachable
+  uri:
+    url: "http://{{ ansible_host }}:{{ mlflow_port }}/health"
+    status_code: 200
+  register: mlflow_health
+  retries: 30
+  delay: 2
+  until: mlflow_health.status == 200

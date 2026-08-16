@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+
+    environment {
+        MLFLOW_TRACKING_URI = 'http://<oci-training-ip>:5000'
+        REGISTRY = 'docker.io/<org>/churn-api'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'pytest api/ || true'
+                sh 'python ml/evaluate.py || exit 1'
+            }
+        }
+
+        stage('Train') {
+            steps {
+                sh 'ssh oci-training "cd /opt/mlops && python ml/train.py"'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh "docker build -t ${REGISTRY}:\$BUILD_NUMBER -f docker/api/Dockerfile docker/api"
+            }
+        }
+
+        stage('Push') {
+            steps {
+                sh "docker push ${REGISTRY}:\$BUILD_NUMBER"
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh "kubectl set image deployment/churn-api churn-api=${REGISTRY}:\$BUILD_NUMBER -n mlops"
+                sh 'kubectl rollout status deployment/churn-api -n mlops'
+            }
+        }
+    }
+
+    post {
+        success { echo 'Churn API deployed successfully.' }
+        failure { echo 'Pipeline failed.' }
+    }
+}

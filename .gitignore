@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .worktrees/
 
 # Ralph loop state
@@ -5,3 +6,13 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+=======
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+__pycache__/
+*.pyc
+.venv/
+.ralph/
+>>>>>>> agent/backend-agent

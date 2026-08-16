@@ -1,0 +1,33 @@
+---
+# Master playbook: runs all roles on all hosts in correct order.
+# Usage: ansible-playbook -i inventory/hosts.yml site.yml
+- name: Bootstrap all servers
+  hosts: all
+  become: true
+  roles:
+    - common
+    - docker
+
+- name: Configure Kubernetes cluster (GCP VMs only)
+  hosts: gcp_k8s
+  become: true
+  roles:
+    - kubernetes
+
+- name: Deploy MLflow (OCI training VM only)
+  hosts: oci-training
+  become: true
+  roles:
+    - mlflow
+
+- name: Deploy monitoring stack (OCI monitoring VM only)
+  hosts: oci-monitoring
+  become: true
+  roles:
+    - monitoring
+
+- name: Prepare training environment (OCI training VM only)
+  hosts: oci-training
+  become: true
+  roles:
+    - training

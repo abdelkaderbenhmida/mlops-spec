@@ -1,0 +1,19 @@
+---
+# Render the Prometheus config from the role defaults.
+# Targets are templated from prometheus_scrape_targets (from Terraform outputs).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+{% for job, targets in prometheus_scrape_targets.items() %}
+  - job_name: {{ job }}
+{% if job == 'churn_api' %}
+    metrics_path: /metrics
+    static_configs:
+      - targets: {{ targets | to_json }}
+{% else %}
+    static_configs:
+      - targets: {{ targets | to_json }}
+{% endif %}
+{% endfor %}

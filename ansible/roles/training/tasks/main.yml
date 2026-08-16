@@ -1,0 +1,60 @@
+---
+# Training role: install Python 3.11, pip dependencies, copy training scripts,
+# set MLFLOW_TRACKING_URI env var. Runs on oci-training. Idempotent.
+- name: Install Python 3.11 and pip
+  apt:
+    name:
+      - python3.11
+      - python3.11-venv
+      - python3-pip
+    state: present
+
+- name: Create virtual environment for ML training
+  command: python3.11 -m venv /opt/ml-env
+  args:
+    creates: /opt/ml-env/bin/activate
+
+- name: Upgrade pip in virtual environment
+  command: /opt/ml-env/bin/pip install --upgrade pip
+  changed_when: false
+
+- name: Install Python dependencies from requirements.txt
+  command: /opt/ml-env/bin/pip install -r /opt/ml/requirements.txt
+  args:
+    creates: /opt/ml-env/lib/python3.11/site-packages/sklearn
+
+- name: Ensure ml directory exists
+  file:
+    path: /opt/ml
+    state: directory
+    mode: "0755"
+
+- name: Copy training scripts
+  copy:
+    src: "{{ item }}"
+    dest: /opt/ml/
+    mode: "0644"
+  loop:
+    - train.py
+    - evaluate.py
+    - preprocess.py
+    - requirements.txt
+
+- name: Copy churn data
+  copy:
+    src: data/churn.csv
+    dest: /opt/ml/data/churn.csv
+    mode: "0644"
+
+- name: Set MLFLOW_TRACKING_URI in /etc/environment
+  lineinfile:
+    path: /etc/environment
+    line: 'MLFLOW_TRACKING_URI="{{ mlflow_tracking_uri }}"'
+    state: present
+
+- name: Set MLFLOW_TRACKING_URI for ubuntu user
+  lineinfile:
+    path: /home/ubuntu/.bashrc
+    line: 'export MLFLOW_TRACKING_URI="{{ mlflow_tracking_uri }}"'
+    state: present
+    create: true

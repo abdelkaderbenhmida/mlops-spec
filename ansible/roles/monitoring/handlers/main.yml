@@ -1,0 +1,13 @@
+---
+# Monitoring role handlers.
+- name: restart prometheus
+  docker_container:
+    name: prometheus
+    state: started
+    restart: true
+
+- name: restart grafana
+  docker_container:
+    name: grafana
+    state: started
+    restart: true
