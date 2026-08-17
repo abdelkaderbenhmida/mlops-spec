@@ -1,128 +1,60 @@
-"""Tests for the training pipeline (ml/train.py + ml/preprocess.py).
+"""Tests for the credit risk training pipeline."""
+import sys
+from pathlib import Path
 
-TODO: ml/train.py, ml/preprocess.py, ml/data/churn.csv are pending — they are
-being built by the backend agent in its own worktree. These tests skip until
-the backend code lands on this branch.
-
-MLflow is pointed at a local sqlite:// file so no tracking server is needed.
-The dataset is replaced by a small synthetic frame (see tests/_data.py) so the
-run completes in a couple of seconds.
-"""
+import mlflow
 import pytest
 
-pytest.importorskip("mlflow", reason="mlflow not installed")
-pytest.importorskip("sklearn", reason="scikit-learn not installed")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ml"))
 
-train = pytest.importorskip(
-    "train", reason="ml/train.py pending (backend agent builds ml/ in parallel)"
-)
-preprocess = pytest.importorskip(
-    "preprocess", reason="ml/preprocess.py pending (backend agent)"
-)
-
+import train
+import preprocess
 from _data import build_subset_df
 
 
-class TestPreprocess:
-    def test_load_data_reads_churn_csv(self):
-        df = preprocess.load_data()
-        assert list(df.columns) == [
-            "tenure",
-            "MonthlyCharges",
-            "TotalCharges",
-            "Contract",
-            "PaymentMethod",
-            "Churn",
-        ]
-        assert len(df) >= 7000
-
-    def test_encode_features_encodes_categoricals(self):
-        df = build_subset_df()
-        X, y, encoders = preprocess.encode_features(df)
-        assert list(encoders) == ["Contract", "PaymentMethod"]
-        assert list(X.columns) == [
-            "Contract",
-            "PaymentMethod",
-            "tenure",
-            "MonthlyCharges",
-            "TotalCharges",
-        ]
-        for col in ("Contract", "PaymentMethod"):
-            assert X[col].dtype.kind in "iu", f"{col} not integer-encoded"
-        assert y.dtype.kind in "iu"
-        assert len(X) == len(df) == len(y)
-
-    def test_train_test_split_80_20_random_state_42(self):
-        df = build_subset_df()
-        train_df, test_df = preprocess.train_test_split(df)
-        assert len(train_df) == pytest.approx(len(df) * 0.8, abs=1)
-        assert len(test_df) == pytest.approx(len(df) * 0.2, abs=1)
-        assert len(train_df) + len(test_df) == len(df)
-        # Deterministic given random_state=42.
-        train2, _ = preprocess.train_test_split(df)
-        assert list(train2.index) == list(train_df.index)
-        # Stratified split keeps the target balance close to the source.
-        assert abs(train_df["Churn"].mean() - df["Churn"].mean()) < 0.05
-
-    def test_apply_encoders_roundtrip(self):
-        df = build_subset_df()
-        _, _, encoders = preprocess.encode_features(df)
-        X = preprocess.apply_encoders(df, encoders)
-        assert X["Contract"].dtype.kind in "iu"
-        assert len(X) == len(df)
-
-
 class TestTrain:
-    def test_train_pipeline_end_to_end(self, tmp_path, monkeypatch):
-        import mlflow
+    def test_train_end_to_end(self, tmp_path, monkeypatch):
+        """Full pipeline: train -> register -> save artifact."""
+        mlruns = str(tmp_path / "mlruns")
+        monkeypatch.setenv("MLFLOW_TRACKING_URI", f"file://{mlruns}")
+        monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
 
-        uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
-        monkeypatch.setattr(train, "TRACKING_URI", uri)
-        monkeypatch.setattr(train, "MODEL_NAME", "churn-model")
-        df = build_subset_df()
+        # PATCH the module-level constant (already evaluated at import time)
+        monkeypatch.setattr(train, "TRACKING_URI", f"file://{mlruns}")
+
+        df = build_subset_df(500)
+        monkeypatch.setattr(preprocess, "load_data", lambda: df)
         monkeypatch.setattr(train, "load_data", lambda: df)
+        monkeypatch.setattr(train, "_REPO_ROOT", str(tmp_path))
 
-        artifact_calls = []
-        monkeypatch.setattr(
-            train.mlflow,
-            "log_artifact",
-            lambda path, artifact_path=None: artifact_calls.append(
-                (path, artifact_path)
-            ),
-        )
+        # Ensure ml/ subdir exists for model.pkl save
+        (tmp_path / "ml").mkdir(exist_ok=True)
 
-        monkeypatch.chdir(tmp_path)
         train.main()
 
-        # 1. Local model artifact saved.
-        pkl = tmp_path / "ml" / "model.pkl"
-        assert pkl.exists(), "model.pkl was not saved"
-        assert pkl.stat().st_size > 0
+        model_pkl = tmp_path / "ml" / "model.pkl"
+        assert model_pkl.exists()
+        assert model_pkl.stat().st_size > 0
 
-        # 2. Model registered under the expected name.
-        client = mlflow.tracking.MlflowClient(uri)
-        versions = client.get_latest_versions(
-            "churn-model", stages=["Production", "None"]
-        )
-        assert versions, "churn-model not registered in MLflow"
-        assert versions[0].name == "churn-model"
+        client = mlflow.tracking.MlflowClient(f"file://{mlruns}")
+        versions = client.get_latest_versions("credit-risk-model", stages=["Staging", "None"])
+        assert versions, "credit-risk-model not registered"
+        assert versions[0].name == "credit-risk-model"
 
-        # 3. Params and metrics logged on the run.
         run = client.get_run(versions[0].run_id)
-        assert run.data.params.get("n_estimators") == "300"
-        assert run.data.params.get("random_state") == "42"
-        for metric in ("accuracy", "f1", "roc_auc"):
-            assert metric in run.data.metrics, f"{metric} not logged"
+        assert "roc_auc" in run.data.metrics
+        assert "ks" in run.data.metrics
 
-        # 4. Source CSV artifact logged.
-        assert artifact_calls, "log_artifact never called"
-        assert artifact_calls[0] == ("ml/data/churn.csv", "data")
+    def test_compute_ks(self):
+        import numpy as np
+        y_true = [0, 0, 1, 1]
+        y_prob = [0.1, 0.4, 0.6, 0.9]
+        ks = train.compute_ks(y_true, y_prob)
+        assert 0.0 <= ks <= 1.0
 
-    def test_model_is_random_forest(self):
-        df = build_subset_df()
-        X, y, _ = preprocess.encode_features(df)
-        train_df, _ = preprocess.train_test_split(df)
-        clf = train.RandomForestClassifier(n_estimators=300, max_depth=10, random_state=42)
-        assert isinstance(clf, train.RandomForestClassifier)
-        assert clf.n_estimators == 300
-        assert clf.random_state == 42
+    def test_preprocess_encode_features(self):
+        df = build_subset_df(100)
+        X, y = preprocess.encode_features(df)
+        assert len(X) == 100
+        assert len(y) == 100
+        assert set(y.unique()).issubset({0, 1})

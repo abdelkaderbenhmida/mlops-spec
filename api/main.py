@@ -1,4 +1,4 @@
-"""FastAPI application for churn prediction API."""
+"""FastAPI application for credit risk prediction API."""
 import os
 from contextlib import asynccontextmanager
 
@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from db import get_session, init_db, Prediction
-from model import load_model, predict, get_model_version
+from model import load_model, predict, risk_tier, get_model_version
 from schemas import PredictRequest, PredictResponse, HealthResponse, PredictionRecord
 
 
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Churn Prediction API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Credit Risk Prediction API", version="1.0.0", lifespan=lifespan)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
@@ -32,6 +32,7 @@ async def predict_endpoint(request: PredictRequest):
     try:
         input_data = request.model_dump()
         prediction, probability = predict(input_data)
+        tier = risk_tier(probability)
 
         session = get_session()
         record = Prediction(
@@ -43,7 +44,7 @@ async def predict_endpoint(request: PredictRequest):
         session.commit()
         session.close()
 
-        return PredictResponse(prediction=prediction, probability=probability)
+        return PredictResponse(prediction=prediction, probability=probability, risk_tier=tier)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

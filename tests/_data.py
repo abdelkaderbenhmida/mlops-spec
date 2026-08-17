@@ -1,46 +1,44 @@
-"""Shared synthetic churn data builder for the QA suite.
-
-Mirrors the schema of ml/data/churn.csv (see mlops-platform-spec.md) so
-train/evaluate tests run fast on a small in-memory frame instead of the
-full 7k-row CSV, without depending on the CSV being present at test time.
-
-The Churn label has learnable signal (low tenure + high monthly charges push
-toward churn) so a trained Random Forest beats the 0.70 accuracy gate on the
-hold-out split deterministically.
-"""
-import numpy as np
+"""Shared test data for the credit risk ML pipeline."""
 import pandas as pd
+import numpy as np
 
-CONTRACTS = ["Month-to-month", "One year", "Two year"]
-PAYMENTS = [
-    "Electronic check",
-    "Mailed check",
-    "Bank transfer (automatic)",
-    "Credit card (automatic)",
-]
+RNG = np.random.default_rng(99)
 
 
-def build_subset_df(n=120, seed=42):
-    """Deterministic synthetic churn frame with both target classes present."""
-    rng = np.random.default_rng(seed)
+def build_subset_df(n: int = 500) -> pd.DataFrame:
+    """Build a small synthetic credit risk dataframe for tests."""
     rows = []
-    for _ in range(n):
-        tenure = int(rng.integers(0, 73))
-        monthly = round(float(rng.uniform(18.0, 119.0)), 2)
-        score = (1.0 - tenure / 72.0) * 0.6 + (monthly / 119.0) * 0.4
-        churn = 1 if score > 0.52 + float(rng.uniform(-0.18, 0.18)) else 0
-        rows.append(
-            {
-                "tenure": tenure,
-                "MonthlyCharges": monthly,
-                "TotalCharges": round(float(rng.uniform(0.0, 9000.0)), 2),
-                "Contract": str(rng.choice(CONTRACTS)),
-                "PaymentMethod": str(rng.choice(PAYMENTS)),
-                "Churn": int(churn),
-            }
-        )
-    df = pd.DataFrame(rows)
-    # Guarantee both classes appear.
-    df.loc[0, "Churn"] = 0
-    df.loc[1, "Churn"] = 1
-    return df
+    for i in range(n):
+        age = int(RNG.integers(20, 70))
+        income = float(RNG.lognormal(10.5, 0.8))
+        monthly_income = income / 12
+        debt_ratio = float(np.clip(RNG.beta(2, 5), 0, 10))
+        util = float(np.clip(RNG.beta(3, 2) * 100, 0, 100))
+        late30 = int(RNG.poisson(0.2))
+        late60 = int(RNG.poisson(0.08))
+        late90 = int(RNG.poisson(0.03))
+        credit_lines = int(RNG.poisson(5))
+        mortgages = int(RNG.poisson(0.7))
+        dependents = int(RNG.poisson(1))
+
+        logit = -3.5 + 0.8 * late90 + 0.5 * late60 + 0.3 * late30 + 0.02 * (util - 50) / 10
+        p = 1 / (1 + np.exp(-logit))
+        default = int(RNG.random() < p)
+
+        rows.append({
+            "age": age,
+            "income": round(income, 2),
+            "monthly_income": round(monthly_income, 2),
+            "debt_ratio": round(debt_ratio, 4),
+            "revolving_utilization": round(util, 2),
+            "num_open_credit_lines": credit_lines,
+            "num_dependents": dependents,
+            "num_30_59_days_late": late30,
+            "num_60_89_days_late": late60,
+            "num_90_days_late": late90,
+            "num_mortgages": mortgages,
+            "number_real_estate_loans": mortgages,
+            "default": default,
+        })
+
+    return pd.DataFrame(rows)

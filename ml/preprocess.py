@@ -1,52 +1,47 @@
-"""Shared preprocessing for the churn ML pipeline.
+"""Shared preprocessing for the credit risk ML pipeline.
 
-Encodes categorical features with LabelEncoder and splits the data.
+Encodes categorical features, handles missing values, and splits the data.
 Both train.py and evaluate.py import from here so the encoding is
 identical between training and evaluation.
 """
 import os
 
+import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
-CATEGORICAL_COLUMNS = ["Contract", "PaymentMethod"]
-NUMERIC_COLUMNS = ["tenure", "MonthlyCharges", "TotalCharges"]
-TARGET = "Churn"
+NUMERIC_COLUMNS = [
+    "age", "income", "monthly_income", "debt_ratio",
+    "revolving_utilization", "num_open_credit_lines", "num_dependents",
+    "num_30_59_days_late", "num_60_89_days_late", "num_90_days_late",
+    "num_mortgages", "number_real_estate_loans",
+]
+TARGET = "default"
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.environ.get(
-    "CHURN_DATA_PATH", os.path.join(_REPO_ROOT, "ml", "data", "churn.csv")
+    "CREDIT_DATA_PATH", os.path.join(_REPO_ROOT, "ml", "data", "credit.csv")
 )
 
 
 def load_data(path=None):
     path = path or DATA_PATH
     df = pd.read_csv(path)
-    if "customerID" in df.columns:
-        df = df.drop(columns=["customerID"])
+    if "customer_id" in df.columns:
+        df = df.drop(columns=["customer_id"])
     return df
 
 
 def encode_features(df):
-    """Return (X, y, encoders) with categorical columns LabelEncoded."""
-    X = df[CATEGORICAL_COLUMNS + NUMERIC_COLUMNS].copy()
+    """Return (X, y) with all features numeric."""
+    X = df[NUMERIC_COLUMNS].copy()
     y = df[TARGET].astype(int)
-
-    encoders = {}
-    for col in CATEGORICAL_COLUMNS:
-        enc = LabelEncoder()
-        X[col] = enc.fit_transform(X[col])
-        encoders[col] = enc
-    return X, y, encoders
+    return X, y
 
 
-def apply_encoders(df, encoders):
-    """Apply pre-fitted encoders to new data (e.g. the test set)."""
-    X = df[CATEGORICAL_COLUMNS + NUMERIC_COLUMNS].copy()
-    for col in CATEGORICAL_COLUMNS:
-        enc = encoders[col]
-        X[col] = enc.transform(X[col])
-    return X
+def apply_encoders(df, encoders=None):
+    """Apply feature matrix (encoders kept for API compatibility)."""
+    return df[NUMERIC_COLUMNS].copy()
 
 
 def train_test_split(df, test_size=0.2, random_state=42):
