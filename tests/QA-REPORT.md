@@ -23,7 +23,7 @@ breaks acceptance criteria or availability; `MED` = robustness/perf;
 - **Issue:** the API schema (and the spec's request body) uses snake_case (`monthly_charges`, `total_charges`), but `preprocess.CATEGORICAL_COLUMNS/NUMERIC_COLUMNS` expect the CSV's PascalCase (`MonthlyCharges`, `TotalCharges`). `model.predict` builds `pd.DataFrame([input_data])` and hands it straight to `apply_encoders`, which does `df[["Contract","PaymentMethod","tenure","MonthlyCharges","TotalCharges"]]` → `KeyError` on every request.
 - **Repro:** a **valid** spec payload (`tenure`, `monthly_charges`, `total_charges`, `contract`, `payment_method`) → HTTP 500, so the acceptance criterion *"POST /predict returns a valid prediction"* fails 100% of the time.
 - **Fix:** map API fields to model/preprocess column names in `model.predict` (e.g. `{"tenure":"tenure","monthly_charges":"MonthlyCharges","total_charges":"TotalCharges","contract":"Contract","payment_method":"PaymentMethod"}`) or have `apply_encoders` accept both.
-- **Test:** `tests/test_api.py::TestPredict::test_real_predict_path` is marked `xfail` until this is fixed.
+- **Status:** FIXED (commit 23705fc). Field mapping added in `api/model.py`; `test_real_predict_path` un-xfailed and passing.
 
 ### H3. Unknown categorical value returns 500 instead of 422
 - **File:** `api/model.py:59-63` + `api/schemas.py:5-10`

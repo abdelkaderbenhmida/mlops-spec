@@ -121,15 +121,6 @@ class TestPredict:
         assert record.probability == "0.87"
         assert fake_session.commits == 1
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "backend bug QA-REPORT H4: model.predict feeds snake_case fields "
-            "(monthly_charges/total_charges) to preprocess.apply_encoders, which "
-            "expects MonthlyCharges/TotalCharges -> KeyError -> HTTP 500. "
-            "Un-xfail when api/model.py maps the fields."
-        ),
-    )
     def test_real_predict_path(self, tmp_path, monkeypatch):
         """Exercises model.predict end-to-end with a real trained classifier.
 
