@@ -5,7 +5,7 @@ train/evaluate tests run fast on a small in-memory frame instead of the
 full 7k-row CSV, without depending on the CSV being present at test time.
 
 The Churn label has learnable signal (low tenure + high monthly charges push
-toward churn) so a trained Random Forest beats the 0.75 accuracy gate on the
+toward churn) so a trained Random Forest beats the 0.70 accuracy gate on the
 hold-out split deterministically.
 """
 import numpy as np

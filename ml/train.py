@@ -5,7 +5,7 @@ Steps:
   1. Load ml/data/churn.csv
   2. Drop customerID, encode categoricals (LabelEncoder)
   3. Train/test split 80/20, random_state=42
-  4. Train RandomForestClassifier(n_estimators=100)
+  4. Train RandomForestClassifier(n_estimators=300, max_depth=10)
   5. Log params + metrics (accuracy, f1, roc_auc) to MLflow
   6. Register model in MLflow Model Registry as "churn-model"
   7. Save model artifact model.pkl
@@ -38,7 +38,7 @@ def main():
     X_test = X.loc[test_df.index]
     y_test = y.loc[test_df.index]
 
-    params = {"n_estimators": 100, "random_state": 42}
+    params = {"n_estimators": 300, "max_depth": 10, "random_state": 42}
     clf = RandomForestClassifier(**params)
     clf.fit(X_train, y_train)
 

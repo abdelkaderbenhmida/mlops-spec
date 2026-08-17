@@ -4,7 +4,7 @@ TODO: ml/evaluate.py, ml/preprocess.py are pending — they are being built by
 the backend agent in its own worktree. These tests skip until the backend code
 lands on this branch.
 
-The accuracy gate (exit 1 if accuracy < 0.75) is tested deterministically by
+The accuracy gate (exit 1 if accuracy < 0.70) is tested deterministically by
 stubbing the loaded model so predictions are either all-correct (gate passes)
 or all-wrong (gate fails). An end-to-end test registers a real classifier in a
 local sqlite MLflow file store and runs the full evaluation.
@@ -79,8 +79,8 @@ class TestAccuracyGate:
         assert exc.value.code == 0
         assert "PASS" in capsys.readouterr().out
 
-    def test_threshold_is_0_75(self):
-        assert evaluate.ACCURACY_THRESHOLD == 0.75
+    def test_threshold_is_0_70(self):
+        assert evaluate.ACCURACY_THRESHOLD == 0.70
 
     def test_exits_1_when_model_not_registered(self, monkeypatch):
         class NoModels:

@@ -1,0 +1,23 @@
+artifact_path: /home/gadour/Desktop/new project/other/mlops-platform-spec/mlruns/0/models/m-d469adda52774f138e2bc0e2332c95b0/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.12.3
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.15.1
+model_id: m-d469adda52774f138e2bc0e2332c95b0
+model_size_bytes: 964932
+model_uuid: m-d469adda52774f138e2bc0e2332c95b0
+prompts: null
+run_id: 5c05898cf89243db9c33f3cde2dbbe21
+utc_time_created: '2026-08-17 12:15:25.279469'

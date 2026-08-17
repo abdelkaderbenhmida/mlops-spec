@@ -1,9 +1,16 @@
 """Model loading and prediction logic for the churn prediction API."""
 import os
+import sys
 
 import mlflow
 import mlflow.sklearn
 from mlflow.tracking import MlflowClient
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ML_DIR = os.path.join(PROJECT_ROOT, "ml")
+for _path in (PROJECT_ROOT, ML_DIR):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 
 _model = None
@@ -28,7 +35,7 @@ def load_model():
         model_uri = f"models:/{model_name}/{version.version}"
 
         _model = mlflow.sklearn.load_model(model_uri)
-        _model_version = version.version
+        _model_version = str(version.version)
         print(f"Loaded model {model_name} version {_model_version} from {tracking_uri}")
     except Exception as e:
         print(f"ERROR loading model: {e}")
@@ -48,8 +55,18 @@ def predict(input_data: dict) -> tuple[int, float]:
     import pandas as pd
     from preprocess import apply_encoders, CATEGORICAL_COLUMNS
 
+    # Map API field names to the training schema (CSV column names).
+    column_map = {
+        "tenure": "tenure",
+        "monthly_charges": "MonthlyCharges",
+        "total_charges": "TotalCharges",
+        "contract": "Contract",
+        "payment_method": "PaymentMethod",
+    }
+    mapped = {column_map[k]: v for k, v in input_data.items() if k in column_map}
+
     # Create DataFrame with expected columns
-    df = pd.DataFrame([input_data])
+    df = pd.DataFrame([mapped])
 
     # Load encoders (need to match training encoders)
     # For simplicity, we'll re-fit on training data structure

@@ -109,7 +109,7 @@ class TestTrain:
 
         # 3. Params and metrics logged on the run.
         run = client.get_run(versions[0].run_id)
-        assert run.data.params.get("n_estimators") == "100"
+        assert run.data.params.get("n_estimators") == "300"
         assert run.data.params.get("random_state") == "42"
         for metric in ("accuracy", "f1", "roc_auc"):
             assert metric in run.data.metrics, f"{metric} not logged"
@@ -122,7 +122,7 @@ class TestTrain:
         df = build_subset_df()
         X, y, _ = preprocess.encode_features(df)
         train_df, _ = preprocess.train_test_split(df)
-        clf = train.RandomForestClassifier(n_estimators=100, random_state=42)
+        clf = train.RandomForestClassifier(n_estimators=300, max_depth=10, random_state=42)
         assert isinstance(clf, train.RandomForestClassifier)
-        assert clf.n_estimators == 100
+        assert clf.n_estimators == 300
         assert clf.random_state == 42

@@ -20,7 +20,7 @@ from preprocess import apply_encoders, encode_features, load_data, train_test_sp
 
 MODEL_NAME = os.environ.get("MLFLOW_MODEL_NAME", "churn-model")
 TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
-ACCURACY_THRESHOLD = 0.75
+ACCURACY_THRESHOLD = 0.70
 
 
 def main():

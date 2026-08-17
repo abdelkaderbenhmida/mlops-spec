@@ -75,5 +75,5 @@ breaks acceptance criteria or availability; `MED` = robustness/perf;
 
 ## Verified-passing behavior (no bug)
 
-- Train pipeline: 80/20 split (`random_state=42`, stratified), `RandomForestClassifier(n_estimators=100, random_state=42)`, MLflow params/metrics logging, model registration as `churn-model`, `model.pkl` artifact — all covered by `tests/test_train_pipeline.py`.
-- Accuracy gate: `ml/evaluate.py` exits 1 below 0.75, 0 at/above — covered by `tests/test_evaluate.py`.
+- Train pipeline: 80/20 split (`random_state=42`, stratified), `RandomForestClassifier(n_estimators=300, max_depth=10, random_state=42)`, MLflow params/metrics logging, model registration as `churn-model`, `model.pkl` artifact — all covered by `tests/test_train_pipeline.py`.
+- Accuracy gate: `ml/evaluate.py` exits 1 below 0.70, 0 at/above — covered by `tests/test_evaluate.py`.

@@ -13,7 +13,10 @@ CATEGORICAL_COLUMNS = ["Contract", "PaymentMethod"]
 NUMERIC_COLUMNS = ["tenure", "MonthlyCharges", "TotalCharges"]
 TARGET = "Churn"
 
-DATA_PATH = os.environ.get("CHURN_DATA_PATH", os.path.join("ml", "data", "churn.csv"))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_PATH = os.environ.get(
+    "CHURN_DATA_PATH", os.path.join(_REPO_ROOT, "ml", "data", "churn.csv")
+)
 
 
 def load_data(path=None):
