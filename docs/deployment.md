@@ -1,21 +1,33 @@
 # Deployment Guide
 
-End-to-end deployment of the Enterprise MLOps Platform for customer churn
-prediction, following the order defined in
+End-to-end deployment of **Ferry**, the cloud-portable ML platform for policy lapse and
+renewal-risk prediction, following the order defined in
 [`mlops-platform-spec.md` §Deployment Order](../mlops-platform-spec.md):
 
 ```
-1. terraform apply (oracle/)   → OCI VMs up first (MLflow needed before API)
-2. terraform apply (gcp/)      → GCP VMs created
-3. ansible-playbook site.yml   → all servers configured, K8s initialized
-4. python ml/train.py          → model trained, registered in MLflow
-5. kubectl apply -f kubernetes/ → API + DB deployed
-6. Jenkins configured (manual, first time only)
-7. k6 run loadtest.js          → validate performance + HPA triggers
+1.  terraform apply (control/)   → neutral control plane: MLflow, Jenkins, S3-compatible storage
+2.  terraform apply (gcp/)       → GCP VPC + IPsec endpoint + 3 k8s VMs
+3.  terraform apply (oracle/)    → OCI VCN + IPsec endpoint + 3 k8s VMs
+4.  terraform apply (ipsec)      → tunnels up, both CIDRs non-overlapping
+5.  ansible-playbook site.yml    → byte-identical config on both providers, K8s initialized
+6.  kubectl apply -f kubernetes/ → cert-manager, nginx-ingress, sealed-secrets bootstrap
+7.  python ml/train.py           → model trained, registered in MLflow ("lapse-model")
+8.  helm upgrade values-gcp && values-oci → API + DB on both clusters
+9.  Configure DNS 80/20 → GCP/OCI
+10. Jenkins configured (manual, first time only)
+11. k6 run loadtest.js           → validate performance + HPA on each provider
+12. Run first supervised exit drill → baseline evidence + remediation list
 ```
 
-**Deploy OCI before GCP.** The API pods load their model from MLflow
-(`http://<oci-training-ip>:5000`) at startup, so MLflow must exist first.
+> **Use case note.** This guide previously deployed a *Telco churn* model to a single
+> serving cluster on GCP with OCI as training/monitoring only. Ferry is symmetric: both
+> providers run identical clusters and both serve live traffic (80/20 split), so
+> everything below runs **twice — once per provider** — against the *lapse* model.
+>
+> **Networking note.** The old guide relied on public-IP scraping and IP allowlisting
+> between clouds ("no VPN required"). That design is superseded: cross-cloud traffic now
+> runs over **site-to-site IPsec** with mTLS between services, and monitoring uses
+> **Prometheus federation** instead of cross-cloud raw scraping.
 
 ---
 
@@ -23,15 +35,16 @@ prediction, following the order defined in
 
 | Tool | Version | Used for |
 |---|---|---|
-| Terraform | >= 1.5 | provisioning `terraform/gcp`, `terraform/oracle` |
+| Terraform | >= 1.5 | provisioning `terraform/gcp`, `terraform/oracle`, `terraform/control`, ipsec |
 | Ansible | current | `ansible/playbooks/*.yml` |
 | Python | 3.11 (recommended) | `ml/*` scripts |
 | kubectl | 1.28 | cluster verification |
+| helm | current | deploying `helm/lapse-api` |
 | k6 | current | load testing |
 
 Credentials you must have ready:
 
-- **GCP**: project ID, a service account with Compute permissions
+- **GCP**: project ID, a service account with Compute + VPN permissions
   (or Application Default Credentials), a public SSH key for the `ubuntu` user.
 - **OCI**: tenancy OCID, user OCID, API key fingerprint, API private key PEM
   path, compartment OCID, region, and the same public SSH key.
@@ -42,99 +55,67 @@ Credentials you must have ready:
 
 ---
 
-## 1. Provision OCI VMs (first)
+## 1. Provision the control plane (first)
 
-Terraform state is separate per provider. Create the OCI environment first.
-
-```bash
-cd terraform/oracle
-terraform init
-```
-
-Create `terraform.tfvars` (edit the placeholders):
-
-```hcl
-tenancy_ocid     = "ocid1.tenancy.oc1..xxxx"
-user_ocid        = "ocid1.user.oc1..xxxx"
-fingerprint      = "aa:bb:cc:dd:ee:ff:00:11"
-private_key_path = "~/.oci/oci_api_key.pem"
-compartment_id   = "ocid1.compartment.oc1..xxxx"
-region           = "eu-frankfurt-1"
-ssh_public_key   = "ssh-ed25519 AAAA… your-comment"
-# optional: name_prefix = "oci"
-```
-
-Apply:
+The neutral control plane hosts MLflow, the model registry, Jenkins, and S3-compatible
+artifact storage. It must exist before the clusters so training and model serving have a
+registry to talk to, and it must be reachable from both clouds over the IPsec tunnel.
 
 ```bash
-terraform apply
+cd terraform/control
+terraform init && terraform apply
 ```
 
-This creates the VCN + subnet `10.0.2.0/24`, the security list (ingress
-`22, 5000, 9090, 3000`), and the VMs `oci-training` (`10.0.2.10`) and
-`oci-monitoring` (`10.0.2.11`).
+Capture the outputs — the MLflow endpoint (`MLFLOW_TRACKING_URI`) and the control-plane
+internal IP used in the IPsec routes.
 
-Capture the outputs:
+## 2. Provision GCP and OCI (in any order — but both before IPsec)
 
-```bash
-terraform output
-# training_public_ip     → public IP of the MLflow server
-# monitoring_public_ip   → public IP of Prometheus/Grafana
-```
-
-## 2. Provision GCP VMs (second)
+Terraform state is separate per provider. Both provider stacks implement the same module
+interface with non-overlapping CIDRs: GCP `10.10.0.0/16`, OCI `10.20.0.0/16`.
 
 ```bash
 cd ../gcp
-terraform init
+terraform init && terraform apply
+# creates VPC 10.10.0.0/16, firewall (22, 6443, 30000–32767, 9100, IPsec UDP 500/4500),
+# 3 VMs: gcp-k8s-cp (10.10.0.10), gcp-k8s-w1 (10.10.0.11), gcp-k8s-w2 (10.10.0.12)
+
+cd ../oracle
+terraform init && terraform apply
+# creates VCN 10.20.0.0/16, security list (SSH + IPsec from GCP peer),
+# 3 VMs: oci-k8s-cp (10.20.0.10), oci-k8s-w1 (10.20.0.11), oci-k8s-w2 (10.20.0.12)
 ```
 
-Create `terraform.tfvars`:
+Verify all six nodes plus the control plane are up and reachable over SSH as `ubuntu`.
 
-```hcl
-project_id     = "my-mlops-project"
-region         = "europe-west1"
-zone           = "europe-west1-b"
-ssh_public_key = "ssh-ed25519 AAAA… your-comment"
-
-# Restrict node exporter scraping to the oci-monitoring VM (IP allowlisting).
-# Replace with the public IP from step 1, e.g. ["129.0.0.11/32"].
-node_exporter_source_cidrs = ["0.0.0.0/0"]
-
-# Optional: point to a service-account JSON; otherwise ADC is used.
-# credentials_file = "~/.gcp/mlops-sa.json"
-```
-
-> **Security note:** `node_exporter_source_cidrs` defaults to `0.0.0.0/0` so the
-> apply completes with zero manual steps. Set it to the **public IP of
-> `oci-monitoring`** (as a `/32`) as soon as you know it, and re-apply.
-
-Apply:
+## 3. Bring up the IPsec tunnels
 
 ```bash
-terraform apply
+cd ../ipsec
+terraform init && terraform apply
 ```
 
-This creates the VPC + subnet `10.0.1.0/24`, the firewall rules
-(`22, 80, 443, 6443, 30000–32767, 9100`), and the three VMs `gcp-k8s-cp`
-(`10.0.1.10`), `gcp-k8s-w1` (`10.0.1.11`), `gcp-k8s-w2` (`10.0.1.12`).
+This wires the GCP VPN gateway to the OCI DRG over site-to-site IPsec (UDP 500/4500),
+with routes for `10.10.0.0/16` ⇄ `10.20.0.0/16` and the control plane's subnet.
+
+**Verify:**
 
 ```bash
-terraform output   # cp_public_ip, w1/w2_public_ip, worker_public_ips, ...
+# from gcp-k8s-cp:
+ping 10.20.0.10      # reachable across the tunnel, NOT via any public IP
+ping <control-plane-ip>
 ```
 
-**Verify:** all five VMs are up and reachable over SSH as `ubuntu`.
+**No service is reachable by public IP allowlist alone** — cross-cloud traffic is
+tunnel-only.
 
 ---
 
-## 3. Configure all servers with Ansible
+## 4. Configure all servers with Ansible
 
-The Ansible inventory (`ansible/inventory/hosts.yml`) is a **static fallback**
-containing placeholder IPs (`35.0.0.10`, `129.0.0.10`, …). Replace
-`ansible_host` with the real public IPs from the Terraform outputs before
-running (the dynamic inventory normally comes from Terraform outputs).
-
-Then run the master playbook:
+The Ansible inventory is populated from Terraform outputs (static fallback with
+placeholder IPs exists under `ansible/inventory/hosts.yml` — replace `ansible_host` values
+if you use it). Run the master playbook:
 
 ```bash
 cd ansible
@@ -144,40 +125,54 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml
 The master playbook runs, in order:
 
 1. **all hosts**: `common` (timezone, base packages, node exporter, UFW) + `docker` (Docker CE).
-2. **gcp_k8s**: `kubernetes` — swap off, kubeadm 1.28, `kubeadm init --pod-network-cidr=192.168.0.0/16` on the CP, Calico CNI, workers joined, all nodes waited for `Ready`.
-3. **oci-training**: `mlflow` (MLflow + PostgreSQL containers) and `training` (Python 3.11 venv, deps, scripts, `MLFLOW_TRACKING_URI`).
-4. **oci-monitoring**: `monitoring` (Prometheus + Grafana containers + provisioning).
+2. **both k8s groups**: `kubernetes` — swap off, kubeadm 1.28, `kubeadm init --pod-network-cidr=192.168.0.0/16`, Calico CNI, workers joined, all nodes waited for `Ready`. **Identical roles, identical versions, both providers.**
+3. **control-plane**: `mlflow` (MLflow + PostgreSQL containers, artifact store on S3-compatible storage) and `training` (Python 3.11 venv, deps, scripts).
+4. **per-provider hosts**: `monitoring` (local Prometheus per provider + central Grafana federation).
 
 Targeted playbooks are also available:
 
 ```bash
-ansible-playbook -i inventory/hosts.yml playbooks/k8s.yml        # cluster only
+ansible-playbook -i inventory/hosts.yml playbooks/k8s.yml        # both clusters
 ansible-playbook -i inventory/hosts.yml playbooks/ml.yml         # training + MLflow
-ansible-playbook -i inventory/hosts.yml playbooks/monitoring.yml # Prometheus + Grafana
+ansible-playbook -i inventory/hosts.yml playbooks/monitoring.yml # Prometheus (per provider) + Grafana
 ```
+
+**Config parity is verified, not assumed:** the playbook's post-run check compares
+package versions, kubeadm/kubelet versions, and rendered config files across the two
+clusters. Divergence fails the drill readiness check.
 
 **Verify:**
 
 ```bash
-ssh ubuntu@<gcp-cp-ip> "kubectl get nodes -o wide"     # 3 nodes Ready
-curl http://<oci-training-ip>:5000/health              # MLflow is alive
-curl http://<oci-monitoring-ip>:9090/-/healthy         # Prometheus is alive
-curl -u admin:admin http://<oci-monitoring-ip>:3000/api/health   # Grafana
+ssh ubuntu@<gcp-cp-ip>  "kubectl get nodes -o wide"    # 3 nodes Ready
+ssh ubuntu@<oci-cp-ip>  "kubectl get nodes -o wide"    # 3 nodes Ready
+curl http://<control-plane-ip>:5000/health             # MLflow is alive
+# Prometheus + Grafana reachable via control-plane federation
 ```
-
-The MLflow URL your API will use is `http://<oci-training-public-ip>:5000`
-(pods reach it over the public IP — see the networking section of
-[`architecture.md`](architecture.md)).
 
 ---
 
-## 4. Train and register the model
-
-Run training on `oci-training` (the `training` role prepared `/opt/ml` and the
-venv, and set `MLFLOW_TRACKING_URI`):
+## 5. Bootstrap cluster add-ons (cert-manager, ingress, sealed secrets)
 
 ```bash
-ssh ubuntu@<oci-training-ip>
+# from either control-plane host:
+kubectl apply -f kubernetes/     # per cluster: cert-manager, nginx-ingress, sealed-secrets
+```
+
+- **cert-manager**: issues mTLS certificates between services.
+- **nginx ingress**: the only ingress controller allowed (portability contract — no
+  provider LB controllers).
+- **Sealed Secrets**: secrets are encrypted at rest; the sealing keys live **outside
+  both clouds**.
+
+---
+
+## 6. Train and register the model
+
+Run training on the control plane:
+
+```bash
+ssh ubuntu@<control-plane-ip>
 cd /opt/ml
 /opt/ml-env/bin/python train.py
 ```
@@ -185,103 +180,117 @@ cd /opt/ml
 Locally (from the repo root, with MLflow reachable):
 
 ```bash
-export MLFLOW_TRACKING_URI="http://<oci-training-public-ip>:5000"
+export MLFLOW_TRACKING_URI="http://<control-plane-ip>:5000"
 python ml/train.py
 ```
 
-`train.py` logs params/metrics (accuracy, f1, roc_auc), registers the model as
-**`churn-model`** in the MLflow Model Registry, and saves `ml/model.pkl`.
+`train.py` trains the lapse model on the policy book (~400k rows, date-partitioned),
+ranks policies by expected value at the fixed intervention capacity, logs metrics
+(including expected value at budget and precision@N — **not AUC alone**), registers the
+model as **`lapse-model`** in the MLflow Model Registry, and saves the artifact to
+S3-compatible storage.
 
-**Verify:** open `http://<oci-training-ip>:5000`, confirm the run under
-experiment `customer-churn` and the registered model `churn-model` version 1.
+**Verify:** open `http://<control-plane-ip>:5000`, confirm the run under experiment
+`policy-lapse` and the registered model `lapse-model` version 1.
 
 Run the CI gate locally to confirm it passes:
 
 ```bash
-export MLFLOW_TRACKING_URI="http://<oci-training-public-ip>:5000"
-python ml/evaluate.py      # exits 0 if accuracy >= 0.75, else 1
+export MLFLOW_TRACKING_URI="http://<control-plane-ip>:5000"
+python ml/evaluate.py      # exits 0 if expected value >= gate, else 1
 ```
+
+The feedback loop (`ml/retention_feedback.py`) ingests campaign outcomes and publishes
+them as labels within 60 days of scoring.
 
 ---
 
-## 5. Deploy the API and database to Kubernetes
+## 7. Deploy the API and database to both clusters (Helm)
 
-From `gcp-k8s-cp` (kubeconfig is at `/home/ubuntu/.kube/config`):
+From a control-plane host with kubeconfigs for both clusters:
 
 ```bash
-ssh ubuntu@<gcp-cp-ip>
-kubectl apply -f kubernetes/
+helm upgrade --install lapse-api helm/lapse-api --values helm/values-gcp.yaml --kubeconfig <gcp-kubeconfig>
+helm upgrade --install lapse-api helm/lapse-api --values helm/values-oci.yaml --kubeconfig <oci-kubeconfig>
 ```
 
-`kubernetes/` currently contains `namespace.yaml` (namespace `mlops`) and
-`api/deployment.yaml` (Deployment `churn-api`, 2 replicas). Per the spec the
-remaining manifests — `api/service.yaml`, `api/hpa.yaml`, `api/ingress.yaml`,
-`configmap.yaml` (`MLFLOW_TRACKING_URI`, `DB_HOST`), and the PostgreSQL
-StatefulSet + PVC + Secret — join `kubernetes/` and are applied by the same
-command. The Deployment already references the ConfigMap `mlops-config` and
-Secret `postgres-secret`.
+`helm/lapse-api` contains the API Deployment (2 replicas, probes on `/health`), Service,
+HPA (2–8 replicas at 60% CPU), nginx Ingress, and the PostgreSQL StatefulSet + PVC +
+Sealed Secret. Per-provider values differ only in cluster-specific endpoints — the chart
+is identical, which is the point.
 
-Set `MLFLOW_TRACKING_URI` in the ConfigMap to `http://<oci-training-public-ip>:5000`.
+Set `MLFLOW_TRACKING_URI` in the values file to `http://<control-plane-internal-ip>:5000`
+(the tunnel address, not a public IP).
 
-**Verify:**
+**Verify — on both providers:**
 
 ```bash
-kubectl -n mlops get pods          # 2x churn-api Running/Ready
+kubectl -n mlops get pods          # 2x lapse-api Running/Ready
 kubectl -n mlops get deploy,svc,hpa,pvc
-curl http://<gcp-lb-or-nodeport>/health        # {"status":"ok","model_version":"1"}
+curl http://<gcp-ingress>/health   # {"status":"ok","model_version":"1","cluster":"gcp"}
+curl http://<oci-ingress>/health   # {"status":"ok","model_version":"1","cluster":"oci"}
 ```
 
-Exercise the API:
+Exercise the API on both:
 
 ```bash
-curl -X POST http://<gcp-lb-or-nodeport>/predict \
+curl -X POST http://<ingress>/score \
   -H "Content-Type: application/json" \
-  -d '{"tenure":12,"monthly_charges":65.5,"total_charges":786.0,
-       "contract":"Month-to-month","payment_method":"Electronic check"}'
-# {"prediction":0|1,"probability":0.87}
+  -d '{"policy_id":"P-4839201","tenure_months":28,"annual_premium":520.0,
+       "product_line":"home","prior_claims":0,"renewal_date":"2026-09-15"}'
+# {"lapse_probability":0.31,"expected_value":41.2,"bucket":"medium"}
 
-curl "http://<gcp-lb-or-nodeport>/predictions?limit=5"   # rows from PostgreSQL
+curl "http://<ingress>/predictions?limit=5"   # rows from local PostgreSQL
 ```
 
 ---
 
-## 6. Jenkins first-time setup (manual)
+## 8. Configure traffic split (80/20)
 
-Jenkins runs as a Docker container **on `gcp-k8s-cp`** and is triggered on push
-to `main`. First-time, manual setup:
+Point global DNS at both ingresses with health checks, weight 80% to GCP and 20% to OCI.
+The health-checked routing is what makes the exit drill a routing decision rather than a
+rebuild.
 
-1. Start the Jenkins container on `gcp-k8s-cp` (Docker is already installed by
-   the `docker` role).
+**Verify:** watch the traffic-share panel in Grafana — both providers must be serving, at
+the configured weights, continuously.
+
+---
+
+## 9. Jenkins first-time setup (manual)
+
+Jenkins runs as a Docker container **on the control plane**, triggered on push to `main`.
+First-time, manual setup:
+
+1. Start the Jenkins container on the control plane (Docker is already installed by the
+   `docker` role).
 2. Unlock Jenkins with the initial admin password from the container logs.
 3. Add credentials to the Jenkins credential store:
    - **Docker Hub** credentials (for `docker build`/`docker push`),
-   - **kubeconfig** as a secret file (from `/home/ubuntu/.kube/config`),
-   - **OCI SSH key** as an SSH credential (for the `ssh oci-training` train step).
-4. Create a pipeline job pointing at the repo's `Jenkinsfile`, with a webhook
-   so a push to `main` triggers the pipeline.
+   - **kubeconfigs for both clusters** as secret files,
+   - **OCI/GCP SSH keys** as SSH credentials.
+4. Create a pipeline job pointing at the repo's `Jenkinsfile`, with a webhook so a push
+   to `main` triggers the pipeline.
 
-Pipeline stages (per spec): Checkout → Test (`pytest api/` + `python
-ml/evaluate.py`) → Train (`ssh oci-training: python ml/train.py`) → Build
-(`docker build -t <registry>/churn-api:$BUILD_NUMBER`) → Push → Deploy
-(`kubectl set image deployment/churn-api …`). The build **fails** if
-`evaluate.py` exits 1 (accuracy < 0.75).
+Pipeline stages (per spec): Checkout → **Portability check** (fails on any
+provider-locked dependency) → Test (`pytest api/` + `python ml/evaluate.py` EV gate) →
+Train (control plane) → Build → Push → **Deploy GCP + Deploy OCI** (helm upgrade each) →
+post-deploy health check on both. The build **fails** if `evaluate.py` exits 1 or the
+portability check trips.
 
 ---
 
-## 7. Load test with k6
+## 10. Load test with k6 — per provider
 
-Per the spec, run k6 **from `oci-monitoring`** against the GCP API external IP /
-ingress:
+Run the suite against **each provider independently**:
 
 ```bash
-ssh ubuntu@<oci-monitoring-ip>
-k6 run /path/to/monitoring/k6/loadtest.js --env API_URL=http://<gcp-lb-ip>:80
+k6 run monitoring/k6/loadtest.js --env API_URL=http://<gcp-ingress>:80
+k6 run monitoring/k6/loadtest.js --env API_URL=http://<oci-ingress>:80
 ```
 
-The test (spec): 20 virtual users for 2 minutes, 70% `GET /health`, 30%
-`POST /predict`, with thresholds `http_req_duration p(95) < 1000ms` and
-`http_req_failed < 1%`. Watch Grafana (ML API dashboard) and HPA behavior while
-it runs.
+The test: 20 virtual users for 2 minutes, 70% `GET /health`, 30% `POST /score`, with
+thresholds `http_req_duration p(95) < 1000ms` and `http_req_failed < 1%`. Watch Grafana
+(ML API dashboard, per-provider panels) and HPA behavior while it runs.
 
 **Verify:**
 
@@ -291,81 +300,102 @@ kubectl -n mlops get hpa          # CPU utilization climbing; replicas 2 → up 
 
 ---
 
+## 11. Run the first exit drill
+
+Monthly, automatically, in business hours with the team watching. `exit-drills/run-drill.sh`
+drives it:
+
+```bash
+bash exit-drills/run-drill.sh
+```
+
+Timeline: freeze deploys → shift DNS 0/100 to OCI → verify latency/error/prediction
+volume → full k6 suite against OCI (HPA must scale) → verify MLflow reachable + model
+reload → **scoring-parity test (10,000 vectors, identical predictions to
+floating-point tolerance on both providers)** → restore 80/20 → generate signed report.
+
+Output lands in `exit-drills/<date>/` with `summary.json`, `traffic_timeline.png`,
+`latency_comparison.md`, `parity_report.json`, `failures.md` (owner + due date), and a
+signed `manifest.json`. **First drill is supervised**; after the remediation list from it
+is closed, drills run unattended.
+
+> A drill that fails is the product working correctly. Failures produce remediation
+> items — never silence.
+
+---
+
 ## Acceptance checkpoints
 
 | Check | Command |
 |---|---|
-| 5 VMs provisioned | `terraform output` in both provider dirs |
-| Cluster healthy | `kubectl get nodes` → 3 nodes `Ready` |
-| Model registered | MLflow UI at `http://<oci-training-ip>:5000` → `churn-model` |
-| Predictions work | `curl POST /predict` and `GET /predictions` |
-| Monitoring live | Grafana `http://<oci-monitoring-ip>:3000` shows node + API + ML dashboards |
-| HPA scales | `kubectl -n mlops get hpa` during k6 |
-| CI green | Jenkins pipeline on push to `main` |
-| k6 within budget | p95 < 1000 ms, error rate < 1% |
+| 6 nodes + control plane provisioned | `terraform output` in each provider dir |
+| Both clusters healthy | `kubectl get nodes` → 3 nodes `Ready` on each |
+| Tunnel up | `ping 10.20.0.10` from GCP (no public IPs) |
+| Model registered | MLflow UI at `http://<control-plane-ip>:5000` → `lapse-model` |
+| Scores work | `curl POST /score` + `GET /predictions` on **both** providers |
+| Monitoring live | Grafana shows per-provider node + API + ML dashboards (federation only) |
+| Traffic split | Grafana traffic-share panel ≈ 80/20 |
+| HPA scales | `kubectl -n mlops get hpa` during k6 on each provider |
+| CI green | Jenkins pipeline on push to `main`, both deploys, portability check green |
+| k6 within budget | p95 < 1000 ms, error rate < 1%, per provider |
+| Parity | `parity_report.json` max delta within floating-point tolerance |
 | No hardcoded secrets | `rg -i "password\|secret" --glob '!*.md'` → env/secret references only |
 
 ---
 
 ## Troubleshooting
 
-### Terraform
+### Terraform / IPsec
 
-- **`terraform apply` hangs creating OCI instances** — OCI `VM.Standard.E2.1.Micro`
-  availability varies by AD/region. Set `availability_domain` in the VM module
-  call if the auto-detected first AD is full.
-- **Provider credentials rejected** — confirm OCI `fingerprint`/`private_key_path`
-  match the API key uploaded to the user, and that the GCP service account has
-  `compute.instances.create` permissions. GCP falls back to Application Default
-  Credentials when `credentials_file` is empty.
-- **Firewall changes not applied** — re-run `terraform apply` after changing
-  `node_exporter_source_cidrs`; GCP firewall rules update in place.
+- **`terraform apply` hangs creating OCI instances** — OCI micro-shape availability
+  varies by AD/region. Set `availability_domain` in the VM module call if the
+  auto-detected first AD is full.
+- **Provider credentials rejected** — confirm OCI `fingerprint`/`private_key_path` match
+  the API key uploaded to the user, and that the GCP service account has the needed
+  Compute/VPN permissions.
+- **Tunnel down** — check UDP 500/4500 both directions and that the peer CIDRs match the
+  route tables on each side. A firewall that allows the tunnel only one way is a common
+  first failure.
 
 ### Ansible
 
-- **`ansible-playbook site.yml` fails to connect** — `ansible/inventory/hosts.yml`
-  is a static fallback with placeholder IPs; replace `ansible_host` values with
-  the real public IPs from `terraform output`, and confirm the SSH key path
-  (`ansible_ssh_private_key_file`) matches.
+- **`ansible-playbook site.yml` fails to connect** — `ansible/inventory/hosts.yml` static
+  fallback has placeholder IPs; replace `ansible_host` values with real IPs from
+  `terraform output`, and confirm the SSH key path.
 - **Re-run safety** — all roles are idempotent; re-running the playbook is safe.
 - **kubeadm init needs a working kubelet** — the role disables swap, loads
-  `overlay`/`br_netfilter`, and configures containerd's systemd cgroup driver
-  before init; if init fails on cgroup errors, check `docker info` for
-  `cgroup driver` = systemd on every node.
-- **Worker join fails** — the join command is generated on the CP with
-  `kubeadm token create --print-join-command`; ensure port 6443 is reachable
-  from workers (GCP firewall `gcp-allow-k8s-api`).
-- **node exporter not scraped** — node exporter is installed by `common` on
-  every host and listens on `:9100`. From `oci-monitoring` run
-  `curl http://<gcp-cp-ip>:9100/metrics`. If it times out, the GCP
-  `node_exporter_source_cidrs` rule excludes the monitoring VM's IP.
-- **MLflow not reachable from the API pods** — confirm the OCI security list
-  allows port 5000 (`oci_security_list_ports = [22, 5000, 9090, 3000]`), MLflow
-  binds `0.0.0.0` (`mlflow_host` default), and the ConfigMap
-  `MLFLOW_TRACKING_URI` points at the **public** IP of `oci-training`.
+  `overlay`/`br_netfilter`, and configures containerd's systemd cgroup driver before
+  init; if init fails on cgroup errors, check `docker info` for `cgroup driver` = systemd
+  on every node.
+- **Worker join fails** — the join command is generated on each CP; ensure port 6443 is
+  reachable from that provider's workers.
+- **node exporter not scraped** — each provider's Prometheus scrapes only its own VMs;
+  if a target is down, check the local firewall, not the other cloud's rules.
 
 ### ML / API
 
-- **`train.py` can't find the CSV** — it defaults to `ml/data/churn.csv`
-  relative to the working directory; on `oci-training` run from `/opt/ml` (data
-  is copied to `/opt/ml/data/churn.csv`). Override with `CHURN_DATA_PATH`.
-- **`evaluate.py` exits 1** — accuracy below the 0.75 gate; retrain or accept
-  the lower model. The gate is intentional CI behavior.
-- **API pods crash-looping at startup** — the app fails if MLflow is
-  unreachable (`load_model()` raises) or PostgreSQL isn't up. Deploy the
-  database manifests first and confirm `MLFLOW_TRACKING_URI` resolves.
-- **HPA never scales** — CPU-based autoscaling requires the Kubernetes
-  **metrics-server**; install it in the cluster if it is absent, then re-check
-  `kubectl -n mlops get hpa`.
+- **`train.py` can't find the data** — it defaults to `ml/data/policies.csv` relative to
+  the working directory; on the control plane run from `/opt/ml`. Override with
+  `POLICIES_DATA_PATH`.
+- **`evaluate.py` exits 1** — expected value at budget below the gate; retrain or accept
+  the lower model. The gate is intentional CI behavior. (Note: the gate is on expected
+  value, not AUC.)
+- **API pods crash-looping at startup** — the app fails if MLflow is unreachable
+  (`load_model()` raises) or PostgreSQL isn't up. Confirm `MLFLOW_TRACKING_URI` points at
+  the control plane's **tunnel** address and the tunnel is up.
+- **HPA never scales** — CPU-based autoscaling requires the Kubernetes **metrics-server**;
+  install it in each cluster if absent.
+- **Scores differ between providers (parity failure)** — library version skew, base-image
+  drift, or a stale model on one cluster. This is what the drill parity test is for: fix
+  the skew, do not explain it away.
 
 ### Monitoring / k6
 
-- **Grafana dashboards empty** — check the datasource provisioning
-  (`/opt/grafana/provisioning`) and that Prometheus is scraping
-  (`Status → Targets` in the Prometheus UI). The custom dashboard file lives at
-  `/opt/grafana/dashboards/ml-api-dashboard.json`.
-- **`churn_api` target down** — its `metrics_path` is `/metrics` and it targets
-  the GCP ingress `:80`; make sure the API service is exposed and the
-  `prometheus-fastapi-instrumentator` `/metrics` endpoint responds.
-- **k6 thresholds failing** — the spec budget is p95 < 1000 ms, < 1% errors.
-  Check HPA scaling and API CPU limits (`500m`) before blaming the test.
+- **Grafana dashboards empty** — check the datasource provisioning and that each
+  provider's Prometheus is scraping its own targets; verify `/federate` is reachable over
+  the tunnel from the control plane.
+- **`lapse_api` target down** — its `metrics_path` is `/metrics` through nginx ingress;
+  make sure the API service is exposed and the instrumentator endpoint responds.
+- **k6 thresholds failing on one provider** — the spec budget is p95 < 1000 ms, < 1%
+  errors. Check that provider's HPA scaling and CPU limits (`500m`) before blaming the
+  test — and note it as a drill-relevant finding if the secondary is slower.
