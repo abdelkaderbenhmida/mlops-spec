@@ -12,6 +12,8 @@ for _path in (PROJECT_ROOT, ML_DIR):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+from preprocess import apply_encoders  # noqa: E402
+
 _model = None
 _model_version = None
 
@@ -52,16 +54,11 @@ def predict(input_data: dict) -> tuple[int, float]:
 
     import pandas as pd
 
-    # API uses same field names as model (no mapping needed for credit risk)
     df = pd.DataFrame([input_data])
+    X = apply_encoders(df)
 
-    # Drop non-feature columns
-    for col in ("customer_id",):
-        if col in df.columns:
-            df = df.drop(columns=[col])
-
-    prediction = int(_model.predict(df)[0])
-    probability = float(_model.predict_proba(df)[0][1])
+    prediction = int(_model.predict(X)[0])
+    probability = float(_model.predict_proba(X)[0][1])
 
     return prediction, probability
 

@@ -1,0 +1,1 @@
+"""Credit risk API — FastAPI service for real-time prediction."""

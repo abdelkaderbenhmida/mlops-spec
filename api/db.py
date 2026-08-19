@@ -1,4 +1,4 @@
-"""Database configuration and models for the churn prediction API."""
+"""Database configuration and models for the credit risk prediction API."""
 import os
 from datetime import datetime
 
@@ -20,12 +20,15 @@ class Prediction(Base):
 
 def get_database_url() -> str:
     """Construct database URL from environment variables."""
-    host = os.environ.get("DB_HOST", "postgres-service")
-    port = os.environ.get("DB_PORT", "5432")
-    user = os.environ.get("DB_USER", "postgres")
-    password = os.environ.get("DB_PASSWORD", "postgres")
-    database = os.environ.get("DB_NAME", "mlops")
-    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    sqlite_path = os.environ.get("SQLITE_DB", os.path.join(os.path.dirname(__file__), "..", "predictions.db"))
+    if os.environ.get("DB_HOST"):
+        host = os.environ["DB_HOST"]
+        port = os.environ.get("DB_PORT", "5432")
+        user = os.environ.get("DB_USER", "postgres")
+        password = os.environ.get("DB_PASSWORD", "postgres")
+        database = os.environ.get("DB_NAME", "mlops")
+        return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    return f"sqlite:///{sqlite_path}"
 
 
 def get_engine():

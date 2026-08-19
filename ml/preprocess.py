@@ -1,52 +1,88 @@
 """Shared preprocessing for the credit risk ML pipeline.
 
-Encodes categorical features, handles missing values, and splits the data.
-Both train.py and evaluate.py import from here so the encoding is
-identical between training and evaluation.
+Encodes categorical features with OneHotEncoder, scales numeric features,
+and splits the data. Both train.py and evaluate.py import from here so
+the encoding is identical between training and evaluation.
 """
 import os
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.model_selection import train_test_split as _split
 
-NUMERIC_COLUMNS = [
-    "age", "income", "monthly_income", "debt_ratio",
-    "revolving_utilization", "num_open_credit_lines", "num_dependents",
-    "num_30_59_days_late", "num_60_89_days_late", "num_90_days_late",
-    "num_mortgages", "number_real_estate_loans",
+FEATURE_COLS = [
+    "checking_status", "duration", "credit_history", "purpose", "credit_amount",
+    "savings_status", "employment", "installment_rate", "personal_status",
+    "other_parties", "residence_since", "property_magnitude", "age",
+    "other_payment_plans", "housing", "existing_credits", "job",
+    "num_dependents", "own_telephone", "foreign_worker"
 ]
-TARGET = "default"
+
+CATEGORICAL_COLS = [
+    "checking_status", "credit_history", "purpose", "savings_status",
+    "employment", "personal_status", "other_parties", "property_magnitude",
+    "other_payment_plans", "housing", "job", "own_telephone", "foreign_worker"
+]
+
+NUMERIC_COLS = [
+    "duration", "credit_amount", "installment_rate", "residence_since",
+    "age", "existing_credits", "num_dependents"
+]
+
+TARGET = "target"
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.environ.get(
     "CREDIT_DATA_PATH", os.path.join(_REPO_ROOT, "ml", "data", "credit.csv")
 )
 
+_preprocessor = None
+
 
 def load_data(path=None):
     path = path or DATA_PATH
     df = pd.read_csv(path)
-    if "customer_id" in df.columns:
-        df = df.drop(columns=["customer_id"])
     return df
 
 
+def _get_preprocessor():
+    global _preprocessor
+    if _preprocessor is None:
+        _preprocessor = ColumnTransformer(
+            transformers=[
+                ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), CATEGORICAL_COLS),
+                ("num", StandardScaler(), NUMERIC_COLS),
+            ],
+            remainder="drop",
+            verbose_feature_names_out=False,
+        )
+    return _preprocessor
+
+
 def encode_features(df):
-    """Return (X, y) with all features numeric."""
-    X = df[NUMERIC_COLUMNS].copy()
-    y = df[TARGET].astype(int)
+    """Return (X, y) with all features encoded as numeric matrix."""
+    preprocessor = _get_preprocessor()
+    X = preprocessor.fit_transform(df[FEATURE_COLS])
+    y = df[TARGET].astype(int).values
     return X, y
 
 
 def apply_encoders(df, encoders=None):
-    """Apply feature matrix (encoders kept for API compatibility)."""
-    return df[NUMERIC_COLUMNS].copy()
+    """Apply fitted preprocessor to new data (for API inference)."""
+    preprocessor = _get_preprocessor()
+    X = preprocessor.transform(df[FEATURE_COLS])
+    return X
 
 
 def train_test_split(df, test_size=0.2, random_state=42):
-    from sklearn.model_selection import train_test_split as _split
-
     return _split(
         df, test_size=test_size, random_state=random_state, stratify=df[TARGET]
     )
+
+
+def get_feature_names():
+    """Get feature names after one-hot encoding."""
+    preprocessor = _get_preprocessor()
+    return preprocessor.get_feature_names_out().tolist()

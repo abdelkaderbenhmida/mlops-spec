@@ -19,7 +19,6 @@ class TestTrain:
         monkeypatch.setenv("MLFLOW_TRACKING_URI", f"file://{mlruns}")
         monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
 
-        # PATCH the module-level constant (already evaluated at import time)
         monkeypatch.setattr(train, "TRACKING_URI", f"file://{mlruns}")
 
         df = build_subset_df(500)
@@ -27,7 +26,6 @@ class TestTrain:
         monkeypatch.setattr(train, "load_data", lambda: df)
         monkeypatch.setattr(train, "_REPO_ROOT", str(tmp_path))
 
-        # Ensure ml/ subdir exists for model.pkl save
         (tmp_path / "ml").mkdir(exist_ok=True)
 
         train.main()
@@ -43,18 +41,11 @@ class TestTrain:
 
         run = client.get_run(versions[0].run_id)
         assert "roc_auc" in run.data.metrics
-        assert "ks" in run.data.metrics
-
-    def test_compute_ks(self):
-        import numpy as np
-        y_true = [0, 0, 1, 1]
-        y_prob = [0.1, 0.4, 0.6, 0.9]
-        ks = train.compute_ks(y_true, y_prob)
-        assert 0.0 <= ks <= 1.0
+        assert "f1" in run.data.metrics
 
     def test_preprocess_encode_features(self):
         df = build_subset_df(100)
         X, y = preprocess.encode_features(df)
         assert len(X) == 100
         assert len(y) == 100
-        assert set(y.unique()).issubset({0, 1})
+        assert set(y).issubset({0, 1})

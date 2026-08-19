@@ -6,3 +6,6 @@
 __pycache__/
 *.pyc
 mlruns/
+
+# Local runtime state
+predictions.db

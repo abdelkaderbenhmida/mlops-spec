@@ -1,4 +1,4 @@
-"""Tests for the credit risk API schemas."""
+"""Tests for the credit risk API schemas (German Credit Data)."""
 import sys
 from pathlib import Path
 
@@ -10,40 +10,51 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "api"))
 from schemas import PredictRequest, PredictResponse, HealthResponse
 
 
+def valid_kwargs(**overrides):
+    base = {
+        "checking_status": "A12",
+        "duration": 24,
+        "credit_history": "A34",
+        "purpose": "A43",
+        "credit_amount": 4000,
+        "savings_status": "A61",
+        "employment": "A73",
+        "installment_rate": 3,
+        "personal_status": "A93",
+        "other_parties": "A101",
+        "residence_since": 4,
+        "property_magnitude": "A121",
+        "age": 35,
+        "other_payment_plans": "A143",
+        "housing": "A152",
+        "existing_credits": 2,
+        "job": "A173",
+        "num_dependents": 1,
+        "own_telephone": "A192",
+        "foreign_worker": "A201",
+    }
+    base.update(overrides)
+    return base
+
+
 class TestPredictRequest:
     def test_valid_request(self):
-        r = PredictRequest(
-            age=35, income=65000, monthly_income=5416.67,
-            debt_ratio=0.35, revolving_utilization=45.2,
-            num_open_credit_lines=6, num_dependents=1,
-            num_30_59_days_late=0, num_60_89_days_late=0,
-            num_90_days_late=0, num_mortgages=1,
-            number_real_estate_loans=1,
-        )
+        r = PredictRequest(**valid_kwargs())
         assert r.age == 35
-        assert r.income == 65000
+        assert r.checking_status == "A12"
+        assert r.credit_amount == 4000
 
-    def test_rejects_age_below_18(self):
+    def test_rejects_unknown_checking_status(self):
         with pytest.raises(ValidationError):
-            PredictRequest(
-                age=15, income=65000, monthly_income=5416.67,
-                debt_ratio=0.35, revolving_utilization=45.2,
-                num_open_credit_lines=6, num_dependents=1,
-                num_30_59_days_late=0, num_60_89_days_late=0,
-                num_90_days_late=0, num_mortgages=1,
-                number_real_estate_loans=1,
-            )
+            PredictRequest(**valid_kwargs(checking_status="A99"))
 
-    def test_rejects_negative_income(self):
+    def test_rejects_duration_out_of_range(self):
         with pytest.raises(ValidationError):
-            PredictRequest(
-                age=35, income=-100, monthly_income=5416.67,
-                debt_ratio=0.35, revolving_utilization=45.2,
-                num_open_credit_lines=6, num_dependents=1,
-                num_30_59_days_late=0, num_60_89_days_late=0,
-                num_90_days_late=0, num_mortgages=1,
-                number_real_estate_loans=1,
-            )
+            PredictRequest(**valid_kwargs(duration=0))
+
+    def test_rejects_negative_credit_amount(self):
+        with pytest.raises(ValidationError):
+            PredictRequest(**valid_kwargs(credit_amount=-100))
 
 
 class TestPredictResponse:

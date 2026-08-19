@@ -1,44 +1,71 @@
-"""Shared test data for the credit risk ML pipeline."""
+"""Shared test data for the credit risk ML pipeline (German Credit Data)."""
 import pandas as pd
 import numpy as np
 
 RNG = np.random.default_rng(99)
 
+CHECKING_STATUS = ["A11", "A12", "A13", "A14"]
+CREDIT_HISTORY = ["A30", "A31", "A32", "A33", "A34"]
+PURPOSE = ["A40", "A41", "A42", "A43", "A44", "A45", "A46", "A47", "A48", "A49", "A410"]
+SAVINGS_STATUS = ["A61", "A62", "A63", "A64", "A65"]
+EMPLOYMENT = ["A71", "A72", "A73", "A74", "A75"]
+PERSONAL_STATUS = ["A91", "A92", "A93", "A94", "A95"]
+OTHER_PARTIES = ["A101", "A102", "A103"]
+PROPERTY_MAGNITUDE = ["A121", "A122", "A123", "A124"]
+OTHER_PAYMENT_PLANS = ["A141", "A142", "A143"]
+HOUSING = ["A151", "A152", "A153"]
+JOB = ["A171", "A172", "A173", "A174"]
+OWN_TELEPHONE = ["A191", "A192"]
+FOREIGN_WORKER = ["A201", "A202"]
+
 
 def build_subset_df(n: int = 500) -> pd.DataFrame:
-    """Build a small synthetic credit risk dataframe for tests."""
+    """Build a small synthetic German Credit Data dataframe for tests."""
     rows = []
-    for i in range(n):
-        age = int(RNG.integers(20, 70))
-        income = float(RNG.lognormal(10.5, 0.8))
-        monthly_income = income / 12
-        debt_ratio = float(np.clip(RNG.beta(2, 5), 0, 10))
-        util = float(np.clip(RNG.beta(3, 2) * 100, 0, 100))
-        late30 = int(RNG.poisson(0.2))
-        late60 = int(RNG.poisson(0.08))
-        late90 = int(RNG.poisson(0.03))
-        credit_lines = int(RNG.poisson(5))
-        mortgages = int(RNG.poisson(0.7))
-        dependents = int(RNG.poisson(1))
+    for _ in range(n):
+        age = int(RNG.integers(18, 76))
+        duration = int(RNG.integers(1, 73))
+        credit_amount = int(RNG.integers(250, 20001))
+        checking_status = RNG.choice(CHECKING_STATUS)
+        credit_history = RNG.choice(CREDIT_HISTORY)
+        savings_status = RNG.choice(SAVINGS_STATUS)
+        purpose = RNG.choice(PURPOSE)
 
-        logit = -3.5 + 0.8 * late90 + 0.5 * late60 + 0.3 * late30 + 0.02 * (util - 50) / 10
-        p = 1 / (1 + np.exp(-logit))
-        default = int(RNG.random() < p)
+        logit = (
+            -1.8
+            + 1.2 * (credit_history == "A34")
+            + 0.7 * (credit_history == "A33")
+            + 0.6 * (checking_status in ("A11", "A12"))
+            - 0.5 * (savings_status in ("A64", "A65"))
+            + 0.02 * (duration - 36) / 10
+            - 0.03 * (age - 40) / 10
+            - 0.2 * np.log1p(credit_amount / 1000)
+        )
+        p_default = 1 / (1 + np.exp(-logit))
+        target = int(RNG.random() < p_default)
 
         rows.append({
+            "checking_status": checking_status,
+            "duration": duration,
+            "credit_history": credit_history,
+            "purpose": purpose,
+            "credit_amount": credit_amount,
+            "savings_status": savings_status,
+            "employment": RNG.choice(EMPLOYMENT),
+            "installment_rate": int(RNG.integers(1, 5)),
+            "personal_status": RNG.choice(PERSONAL_STATUS),
+            "other_parties": RNG.choice(OTHER_PARTIES),
+            "residence_since": int(RNG.integers(1, 5)),
+            "property_magnitude": RNG.choice(PROPERTY_MAGNITUDE),
             "age": age,
-            "income": round(income, 2),
-            "monthly_income": round(monthly_income, 2),
-            "debt_ratio": round(debt_ratio, 4),
-            "revolving_utilization": round(util, 2),
-            "num_open_credit_lines": credit_lines,
-            "num_dependents": dependents,
-            "num_30_59_days_late": late30,
-            "num_60_89_days_late": late60,
-            "num_90_days_late": late90,
-            "num_mortgages": mortgages,
-            "number_real_estate_loans": mortgages,
-            "default": default,
+            "other_payment_plans": RNG.choice(OTHER_PAYMENT_PLANS),
+            "housing": RNG.choice(HOUSING),
+            "existing_credits": int(RNG.integers(1, 5)),
+            "job": RNG.choice(JOB),
+            "num_dependents": int(RNG.integers(1, 3)),
+            "own_telephone": RNG.choice(OWN_TELEPHONE),
+            "foreign_worker": RNG.choice(FOREIGN_WORKER),
+            "target": target,
         })
 
     return pd.DataFrame(rows)

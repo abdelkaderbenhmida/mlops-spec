@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
 """Evaluate the credit risk model against the hold-out test set.
 
-Loads the registered model from MLflow, computes AUC, KS, and fairness
-metrics, and gates on AUC >= 0.75.
+Loads the registered model from MLflow, computes AUC, F1, precision, recall,
+and gates on AUC >= 0.75, F1 >= 0.30.
 
 Exit codes:
-  0  AUC >= 0.75 (gate passed)
-  1  AUC < 0.75  (gate failed) or any error
+  0  AUC >= 0.75 AND F1 >= 0.30 (gate passed)
+  1  gate failed or any error
 """
 import os
 import sys
 
 import mlflow
-import numpy as np
 from mlflow.tracking import MlflowClient
-from sklearn.metrics import classification_report, roc_auc_score, roc_curve
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, roc_auc_score
 
 from preprocess import encode_features, load_data, train_test_split
 
 MODEL_NAME = os.environ.get("MLFLOW_MODEL_NAME", "credit-risk-model")
 TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 AUC_THRESHOLD = 0.75
-KS_THRESHOLD = 0.30
-
-
-def compute_ks(y_true, y_prob):
-    fpr, tpr, _ = roc_curve(y_true, y_prob)
-    return float(np.max(tpr - fpr))
+F1_THRESHOLD = 0.30
 
 
 def main():
@@ -46,28 +40,31 @@ def main():
     df = load_data()
     X, y = encode_features(df)
     train_df, test_df = train_test_split(df)
-    X_test = X.loc[test_df.index]
-    y_test = y.loc[test_df.index]
+    X_test = X[test_df.index]
+    y_test = y[test_df.index]
 
     proba = clf.predict_proba(X_test)[:, 1]
     preds = clf.predict(X_test)
 
     auc = float(roc_auc_score(y_test, proba))
-    ks = compute_ks(y_test, proba)
+    f1 = float(f1_score(y_test, preds, zero_division=0))
+    prec = float(precision_score(y_test, preds, zero_division=0))
+    rec = float(recall_score(y_test, preds, zero_division=0))
 
     print("Classification report:")
-    print(classification_report(y_test, preds, target_names=["Repaid", "Default"]))
+    print(classification_report(y_test, preds, target_names=["Good", "Bad"]))
     print(f"AUC:  {auc:.4f}  (threshold: {AUC_THRESHOLD})")
-    print(f"KS:   {ks:.4f}  (threshold: {KS_THRESHOLD})")
+    print(f"F1:   {f1:.4f}  (threshold: {F1_THRESHOLD})")
+    print(f"Precision: {prec:.4f}  Recall: {rec:.4f}")
 
     if auc < AUC_THRESHOLD:
         print(f"FAIL: AUC {auc:.4f} < {AUC_THRESHOLD}")
         sys.exit(1)
-    if ks < KS_THRESHOLD:
-        print(f"FAIL: KS {ks:.4f} < {KS_THRESHOLD}")
+    if f1 < F1_THRESHOLD:
+        print(f"FAIL: F1 {f1:.4f} < {F1_THRESHOLD}")
         sys.exit(1)
 
-    print(f"PASS: AUC={auc:.4f} >= {AUC_THRESHOLD}, KS={ks:.4f} >= {KS_THRESHOLD}")
+    print(f"PASS: AUC={auc:.4f} >= {AUC_THRESHOLD}, F1={f1:.4f} >= {F1_THRESHOLD}")
     sys.exit(0)
 
 

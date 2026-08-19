@@ -1,0 +1,1 @@
+"""Credit risk data — German Credit Data (UCI Statlog) for model training."""

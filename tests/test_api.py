@@ -9,7 +9,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "api"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 
 import main
-import model
 from _data import build_subset_df
 
 from sklearn.ensemble import GradientBoostingClassifier
@@ -17,75 +16,65 @@ from sklearn.ensemble import GradientBoostingClassifier
 import preprocess
 
 VALID_PAYLOAD = {
+    "checking_status": "A12",
+    "duration": 24,
+    "credit_history": "A34",
+    "purpose": "A43",
+    "credit_amount": 4000,
+    "savings_status": "A61",
+    "employment": "A73",
+    "installment_rate": 3,
+    "personal_status": "A93",
+    "other_parties": "A101",
+    "residence_since": 4,
+    "property_magnitude": "A121",
     "age": 35,
-    "income": 65000.0,
-    "monthly_income": 5416.67,
-    "debt_ratio": 0.35,
-    "revolving_utilization": 45.2,
-    "num_open_credit_lines": 6,
+    "other_payment_plans": "A143",
+    "housing": "A152",
+    "existing_credits": 2,
+    "job": "A173",
     "num_dependents": 1,
-    "num_30_59_days_late": 0,
-    "num_60_89_days_late": 0,
-    "num_90_days_late": 0,
-    "num_mortgages": 1,
-    "number_real_estate_loans": 1,
+    "own_telephone": "A192",
+    "foreign_worker": "A201",
 }
 
 
-class FakeSession:
-    def __init__(self):
-        self.added = []
-        self.committed = 0
+def install_trained_model(monkeypatch, n_rows: int = 300, n_estimators: int = 20):
+    """Fit a tiny model and make the app serve it instead of training at startup."""
+    df = build_subset_df(n_rows)
+    X, y = preprocess.encode_features(df)
+    clf = GradientBoostingClassifier(n_estimators=n_estimators, random_state=42)
+    clf.fit(X, y)
 
-    def add(self, obj):
-        self.added.append(obj)
+    def fake_train():
+        main.MODEL = clf
+        main.FEATURE_NAMES = preprocess.get_feature_names()
+        main.MODEL_METRICS.update({
+            "model_name": type(clf).__name__,
+            "n_estimators": clf.n_estimators,
+            "max_depth": clf.max_depth,
+            "auc": 0.85,
+            "f1": 0.62,
+        })
 
-    def commit(self):
-        self.committed += 1
-
-    def close(self):
-        pass
-
-    def query(self, *a, **kw):
-        return self
-
-    def order_by(self, *a, **kw):
-        return self
-
-    def limit(self, *a, **kw):
-        return self
-
-    def all(self):
-        return []
+    monkeypatch.setattr(main, "train_model", fake_train)
 
 
 class TestHealth:
     def test_health_ok(self, monkeypatch):
-        monkeypatch.setattr(main, "load_model", lambda: None)
-        monkeypatch.setattr(main, "init_db", lambda: None)
-        monkeypatch.setattr(main, "get_session", lambda: FakeSession())
-        monkeypatch.setattr(main, "get_model_version", lambda: "test-1.0")
+        install_trained_model(monkeypatch)
         with TestClient(main.app) as c:
             r = c.get("/health")
         assert r.status_code == 200
         body = r.json()
         assert body["status"] == "ok"
-        assert body["model_version"] == "test-1.0"
+        assert body["model_loaded"] is True
+        assert body["model_version"] == "1.0"
 
 
 class TestPredict:
     def test_predict_returns_200_with_valid_payload(self, monkeypatch):
-        df = build_subset_df()
-        X, y = preprocess.encode_features(df)
-        clf = GradientBoostingClassifier(n_estimators=20, random_state=42)
-        clf.fit(X, y)
-
-        monkeypatch.setattr(main, "load_model", lambda: None)
-        monkeypatch.setattr(model, "_model", clf)
-        monkeypatch.setattr(model, "_model_version", "test-1.0")
-        monkeypatch.setattr(main, "init_db", lambda: None)
-        monkeypatch.setattr(main, "get_session", lambda: FakeSession())
-
+        install_trained_model(monkeypatch)
         with TestClient(main.app) as c:
             r = c.post("/predict", json=VALID_PAYLOAD)
         assert r.status_code == 200
@@ -96,10 +85,40 @@ class TestPredict:
         assert body["risk_tier"] in ("low", "medium", "high", "critical")
 
     def test_predict_422_on_missing_fields(self, monkeypatch):
-        monkeypatch.setattr(main, "load_model", lambda: None)
-        monkeypatch.setattr(main, "init_db", lambda: None)
-        monkeypatch.setattr(main, "get_session", lambda: FakeSession())
-
+        install_trained_model(monkeypatch)
         with TestClient(main.app) as c:
-            r = c.post("/predict", json={"age": 30})
+            r = c.post("/predict", json={"age": 35})
         assert r.status_code == 422
+
+    def test_predict_422_on_unknown_category(self, monkeypatch):
+        install_trained_model(monkeypatch)
+        payload = dict(VALID_PAYLOAD)
+        payload["checking_status"] = "A99"
+        with TestClient(main.app) as c:
+            r = c.post("/predict", json=payload)
+        assert r.status_code == 422
+
+
+class TestHistoryStats:
+    def test_history_and_stats_record_predictions(self, monkeypatch):
+        install_trained_model(monkeypatch)
+        main.PREDICTIONS.clear()
+        with TestClient(main.app) as c:
+            r = c.post("/predict", json=VALID_PAYLOAD)
+            assert r.status_code == 200
+            hist = c.get("/history").json()
+            stats = c.get("/stats").json()
+        assert hist["total"] == 1
+        assert hist["items"][0]["prediction"] == r.json()["prediction"]
+        assert stats["total_predictions"] == 1
+        assert stats["risk_tier_distribution"] == {
+            "low": 0, "medium": 0, "high": 0, "critical": 0
+        } or sum(stats["risk_tier_distribution"].values()) == 1
+
+    def test_model_info(self, monkeypatch):
+        install_trained_model(monkeypatch)
+        with TestClient(main.app) as c:
+            info = c.get("/model-info").json()
+        assert info["model_name"] == "GradientBoostingClassifier"
+        assert "auc" in info["metrics"]
+        assert len(info["feature_importance"]) > 0
