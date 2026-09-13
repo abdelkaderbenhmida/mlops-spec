@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Shared preprocessing for the credit risk ML pipeline.
 
 Encodes categorical features with OneHotEncoder, scales numeric features,

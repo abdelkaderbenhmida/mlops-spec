@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Load German Credit Data (UCI Statlog) from /tmp/realdata/german.data.
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
+"""Load German Credit Data (UCI Statlog) and write ml/data/credit.csv.
+
+The raw ``german.data`` file is not redistributed with this repository. Point
+GERMAN_DATA_PATH at a local copy (downloadable from the UCI Statlog German
+Credit Data set) before running this script.
 
 Features: 13 categorical (A-codes), 8 numeric
 Target: 1=good (repaid), 2=bad (default) -> map to 0/1 (1=default)
@@ -13,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 RNG = np.random.default_rng(42)
-DATA_SOURCE = "/tmp/realdata/german.data"
+DATA_SOURCE = os.getenv("GERMAN_DATA_PATH", "/tmp/realdata/german.data")
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "credit.csv")
 
 COLUMN_NAMES = [
@@ -37,6 +44,12 @@ NUMERIC_COLS = [
 
 
 def load_german_data() -> pd.DataFrame:
+    if not os.path.exists(DATA_SOURCE):
+        raise SystemExit(
+            f"Raw German Credit data not found at {DATA_SOURCE}.\n"
+            "Download the UCI Statlog German Credit Data set and set "
+            "GERMAN_DATA_PATH to the local 'german.data' file."
+        )
     df = pd.read_csv(DATA_SOURCE, sep=r"\s+", header=None, names=COLUMN_NAMES)
     df["target"] = (df["target"] == 2).astype(int)
     return df

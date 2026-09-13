@@ -1,3 +1,6 @@
+# TODO: high - Add data validation before training
+# TODO: medium - Implement hyperparameter logging
+# TODO: low - Add model explainability integration
 """Tests for the credit risk training pipeline."""
 import sys
 from pathlib import Path
@@ -27,6 +30,8 @@ class TestTrain:
         monkeypatch.setattr(train, "_REPO_ROOT", str(tmp_path))
 
         (tmp_path / "ml").mkdir(exist_ok=True)
+        (tmp_path / "ml" / "data").mkdir(exist_ok=True)
+        (tmp_path / "ml" / "data" / "credit.csv").write_text("dummy\n")
 
         train.main()
 

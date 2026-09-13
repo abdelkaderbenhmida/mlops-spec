@@ -236,6 +236,30 @@ whether it worked.
 | `gcp-k8s-w2` | Kubernetes worker 2 | e2-medium |
 
 ### OCI VMs (secondary cluster)
+```mermaid
+graph TD
+    subgraph "GCP Primary Cluster"
+        GCP_CP[Control plane e2-medium]
+        GCP_W1[Worker e2-medium]
+        GCP_W2[Worker e2-medium]
+    end
+    
+    subgraph "OCI Secondary Cluster"
+        OCI_CP[Control plane VM.Standard.E2.2.Micro]
+        OCI_W1[Worker VM.Standard.E2.2.Micro]
+        OCI_W2[Worker VM.Standard.E2.2.Micro]
+    end
+    
+    subgraph "Control Plane (neutral)"
+        CP[MLflow · registry · Jenkins · S3-compatible storage]
+    end
+    
+    GCP_CP -->|IPsec tunnel| CP
+    OCI_CP -->|IPsec tunnel| CP
+    GCP_CP -->|20% traffic| OCI_serving[/Serving/]
+    OCI_serving -->|80% traffic| GCP_serving[/Serving/]
+```
+
 
 | Name | Role | Shape |
 |---|---|---|

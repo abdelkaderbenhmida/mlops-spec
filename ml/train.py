@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
+# TODO: high - Add data validation before training
+# TODO: medium - Implement hyperparameter logging
+# TODO: low - Add model explainability integration
 """Train a credit risk classifier and log it to MLflow.
 
 Steps:
   1. Load ml/data/credit.csv (German Credit Data)
   2. Encode categorical features with OneHotEncoder, scale numeric with StandardScaler
   3. Train/test split 80/20, stratified, random_state=42
-  4. Train GradientBoostingClassifier
+  4. Train XGBClassifier on GPU (device=cuda, tree_method=gpu_hist)
   5. Log params + metrics (AUC, F1, precision, recall) to MLflow
   6. Register model in MLflow Model Registry as "credit-risk-model"
   7. Save model artifact model.pkl
@@ -14,21 +17,21 @@ import os
 import pickle
 
 import mlflow
-import mlflow.sklearn
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import (
     f1_score,
     precision_score,
     recall_score,
     roc_auc_score,
 )
+from xgboost import XGBClassifier
 
 from preprocess import encode_features, load_data, train_test_split
 
 MODEL_NAME = os.environ.get("MLFLOW_MODEL_NAME", "credit-risk-model")
-TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,11 +54,13 @@ def main():
         "max_depth": 6,
         "learning_rate": 0.05,
         "subsample": 0.8,
-        "min_samples_split": 5,
-        "min_samples_leaf": 2,
+        "min_child_weight": 2,
         "random_state": 42,
+        "n_jobs": -1,
+        "device": "cuda",
+        "tree_method": "hist",
     }
-    clf = GradientBoostingClassifier(**params)
+    clf = XGBClassifier(**params)
     clf.fit(X_train, y_train)
 
     preds = clf.predict(X_test)
@@ -77,8 +82,8 @@ def main():
         mlflow.log_param("data_source", "german.data (UCI Statlog)")
         mlflow.log_param("default_rate", f"{y_train.mean():.4f}")
 
-        mlflow.sklearn.log_model(clf, "model")
-        mlflow.log_artifact("ml/data/credit.csv", artifact_path="data")
+        mlflow.xgboost.log_model(clf, "model")
+        mlflow.log_artifact(os.path.join(_REPO_ROOT, "ml", "data", "credit.csv"), artifact_path="data")
 
         model_uri = f"runs:/{run.info.run_id}/model"
         registered = mlflow.register_model(model_uri, MODEL_NAME)

@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Pytest bootstrap for the mlops-platform-spec repo.
 
 Adds the repo root, api/, and ml/ to sys.path so that production modules

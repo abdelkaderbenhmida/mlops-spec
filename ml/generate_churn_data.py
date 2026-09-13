@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Generate realistic synthetic Telco customer churn data (Kaggle-style).
 
 Produces ~7000 rows with the same columns and value distributions as the

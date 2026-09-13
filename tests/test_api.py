@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Tests for the credit risk prediction API."""
 import sys
 from pathlib import Path
@@ -11,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 import main
 from _data import build_subset_df
 
-from sklearn.ensemble import GradientBoostingClassifier
+from xgboost import XGBClassifier
 
 import preprocess
 
@@ -43,7 +46,7 @@ def install_trained_model(monkeypatch, n_rows: int = 300, n_estimators: int = 20
     """Fit a tiny model and make the app serve it instead of training at startup."""
     df = build_subset_df(n_rows)
     X, y = preprocess.encode_features(df)
-    clf = GradientBoostingClassifier(n_estimators=n_estimators, random_state=42)
+    clf = XGBClassifier(n_estimators=n_estimators, random_state=42)
     clf.fit(X, y)
 
     def fake_train():
@@ -119,6 +122,6 @@ class TestHistoryStats:
         install_trained_model(monkeypatch)
         with TestClient(main.app) as c:
             info = c.get("/model-info").json()
-        assert info["model_name"] == "GradientBoostingClassifier"
+        assert info["model_name"] == "XGBClassifier"
         assert "auc" in info["metrics"]
         assert len(info["feature_importance"]) > 0

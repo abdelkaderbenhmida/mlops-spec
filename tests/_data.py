@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Shared test data for the credit risk ML pipeline (German Credit Data)."""
 import pandas as pd
 import numpy as np

@@ -28,7 +28,7 @@ spec:
                   name: mlops-config
                   key: MLFLOW_TRACKING_URI
             - name: MLFLOW_MODEL_NAME
-              value: "churn-model"
+              value: "credit-risk-model"
             - name: DB_HOST
               valueFrom:
                 configMapKeyRef:

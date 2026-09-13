@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Pydantic schemas for the credit risk prediction API (German Credit Data)."""
 from pydantic import BaseModel, Field
 from typing import Literal

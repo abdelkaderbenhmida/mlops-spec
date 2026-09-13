@@ -4,8 +4,8 @@ metadata:
   name: mlops-config
   namespace: mlops
 data:
-  MLFLOW_TRACKING_URI: "http://<oci-training-ip>:5000"
-  MLFLOW_MODEL_NAME: "churn-model"
+  MLFLOW_TRACKING_URI: "http://localhost:5000"
+  MLFLOW_MODEL_NAME: "credit-risk-model"
   DB_HOST: "postgres-service"
   DB_PORT: "5432"
   DB_NAME: "mlops"

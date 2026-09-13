@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# TODO: high - Add quality gate with thresholds
+# TODO: medium - Implement comparison vs current production model
+# TODO: low - Add metrics export for Evidence Pack
 """Evaluate the credit risk model against the hold-out test set.
 
 Loads the registered model from MLflow, computes AUC, F1, precision, recall,
@@ -18,7 +21,7 @@ from sklearn.metrics import classification_report, f1_score, precision_score, re
 from preprocess import encode_features, load_data, train_test_split
 
 MODEL_NAME = os.environ.get("MLFLOW_MODEL_NAME", "credit-risk-model")
-TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 AUC_THRESHOLD = 0.75
 F1_THRESHOLD = 0.30
 
@@ -35,7 +38,7 @@ def main():
     print(f"Evaluating {MODEL_NAME} version {version.version}")
 
     model_uri = f"models:/{MODEL_NAME}/{version.version}"
-    clf = mlflow.sklearn.load_model(model_uri)
+    clf = mlflow.xgboost.load_model(model_uri)
 
     df = load_data()
     X, y = encode_features(df)

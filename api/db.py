@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Database configuration and models for the credit risk prediction API."""
 import os
 from datetime import datetime
@@ -22,7 +25,7 @@ def get_database_url() -> str:
     """Construct database URL from environment variables."""
     sqlite_path = os.environ.get("SQLITE_DB", os.path.join(os.path.dirname(__file__), "..", "predictions.db"))
     if os.environ.get("DB_HOST"):
-        host = os.environ["DB_HOST"]
+        host = os.environ.get("DB_HOST", "localhost")
         port = os.environ.get("DB_PORT", "5432")
         user = os.environ.get("DB_USER", "postgres")
         password = os.environ.get("DB_PASSWORD", "postgres")

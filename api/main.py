@@ -1,3 +1,6 @@
+# TODO: high - Add request validation and error handling
+# TODO: medium - Implement request/response logging
+# TODO: low - Add health check endpoint improvement
 """FastAPI app for Credit Risk (P1) — self-contained, trains at startup on real German Credit Data."""
 
 import sys
@@ -17,7 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sklearn.ensemble import GradientBoostingClassifier
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, f1_score
 
@@ -51,7 +54,7 @@ def train_model():
     FEATURE_NAMES = get_feature_names()
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    MODEL = GradientBoostingClassifier(n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, random_state=42)
+    MODEL = XGBClassifier(n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, random_state=42, device="cuda", tree_method="hist")
     MODEL.fit(X_train, y_train)
 
     proba = MODEL.predict_proba(X_test)[:, 1]

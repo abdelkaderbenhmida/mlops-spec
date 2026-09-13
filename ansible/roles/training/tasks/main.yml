@@ -40,10 +40,10 @@
     - preprocess.py
     - requirements.txt
 
-- name: Copy churn data
+- name: Copy credit risk data
   copy:
-    src: data/churn.csv
-    dest: /opt/ml/data/churn.csv
+    src: data/credit.csv
+    dest: /opt/ml/data/credit.csv
     mode: "0644"
 
 - name: Set MLFLOW_TRACKING_URI in /etc/environment

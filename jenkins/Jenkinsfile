@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        MLFLOW_TRACKING_URI = 'http://<oci-training-ip>:5000'
+        MLFLOW_TRACKING_URI = 'http://localhost:5000'
         REGISTRY = 'docker.io/<org>/churn-api'
     }
 
@@ -13,14 +13,23 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh 'pytest api/ || true'
-                sh 'python ml/evaluate.py || exit 1'
+                sh 'python3 -m pytest api/ tests/'
+                sh 'python3 ml/evaluate.py'
             }
         }
 
         stage('Train') {
             steps {
-                sh 'ssh oci-training "cd /opt/mlops && python ml/train.py"'
+                sh 'python3 ml/train.py'
+            }
+        }
+
+        stage('Drift & Retrain') {
+            steps {
+                // Detect data drift vs reference; auto-retrain + re-evaluate
+                // when the drift score exceeds the threshold.
+                sh 'python3 ml/monitoring/drift_detector.py'
+                sh 'python3 ml/monitoring/retraining_trigger.py'
             }
         }
 

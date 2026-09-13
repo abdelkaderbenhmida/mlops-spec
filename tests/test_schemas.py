@@ -1,3 +1,6 @@
+# TODO: medium - Add type hints where missing
+# TODO: low - Add comprehensive docstring
+# TODO: low - Add error handling for edge cases
 """Tests for the credit risk API schemas (German Credit Data)."""
 import sys
 from pathlib import Path
