@@ -9,3 +9,8 @@ mlruns/
 
 # Local runtime state
 predictions.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
