@@ -1,5 +1,5 @@
 ---
-# Monitoring role: run Prometheus + Grafana as Docker containers on oci-monitoring.
+# Monitoring role: run Prometheus + Grafana as Docker containers on monitoring-server.
 # Prometheus scrapes node exporters on all VMs and the churn API /metrics.
 # Idempotent — safe to re-run.
 - name: Create monitoring directories

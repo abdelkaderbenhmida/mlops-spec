@@ -1,15 +1,30 @@
-# terraform
+# Terraform — ALL-LOCAL
 
-**Project:** mlops-platform-spec
+Ferry provisions its infrastructure **locally only**. There is no cloud
+provider, no credentials, and no remote state. Terraform manages the local
+Docker resources (network, volumes, Postgres, MLflow) via the
+`kreuzwerker/docker` provider.
 
-**Description:**
-This folder contains the implementation files for the terraform component of the mlops-platform-spec project.
+## Usage
 
-**Key Files:**
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
 
-**Total Items:** 3 files/folders
+Outputs give the local MLflow tracking URI (`http://localhost:5000`) and the
+local Postgres DSN.
 
-**Contents:**
-- **gcp/** (directory)
-- **modules/** (directory)
-- **oracle/** (directory)
+## What was removed
+
+- `terraform/gcp/` and `terraform/oracle/` (multi-cloud DORA variant) — removed.
+- `terraform/modules/{network,vm}` (cloud VPC/VM modules) — removed.
+
+## Validation (no apply required)
+
+```bash
+terraform init -backend=false
+terraform validate
+```

@@ -1,7 +1,21 @@
-# Ferry — Cloud-Portable ML Platform for EU Financial Services (DORA)
+# Ferry — Cloud-Portable ML Platform for EU Financial Services (DORA)  [LEGACY SPEC]
 
-> Target product name: **Ferry** — a provably portable ML platform for EU financial
-> services operating under DORA cloud-concentration and exit-strategy requirements.
+> ⚠️ **LEGACY SPECIFICATION — SUPERSEDED BY ALL-LOCAL REFONTE**
+>
+> This document is the **historical** pre-refonte spec describing the multi-cloud
+> (GCP + OCI + DORA) design. It is kept for record. The **current** implementation is
+> **100 % local** (no cloud, no managed services): see [`README.md`](./README.md) and
+> [`README.detailed.md`](./README.detailed.md).
+>
+> Everything below (two-cloud symmetry, portability contract, IPsec, exit drills,
+> GCP + OCI Terraform) is retained as reference only; it has been **removed** from the
+> shipped codebase.
+>
+> ---
+
+## ⚠️ Status: All-Local (README principal)
+
+> Target product name: **Ferry** — an all-local ML server GPU pipeline.
 >
 > This is the specification of record. The infrastructure choices are deliberate and
 > unchanged in spirit from the earlier multi-cloud build: Terraform, Ansible,

@@ -1,21 +1,20 @@
 ---
-# ML playbook: runs mlflow on oci-training and training role on oci-training.
-# Usage: ansible-playbook -i inventory/hosts.yml ml.yml
-- name: Bootstrap OCI training server
-  hosts: oci-training
+# ML playbook: runs mlflow on mlflow_local and training on training_local.
+- name: Bootstrap local servers
+  hosts: mlflow_local, training_local
   become: true
   roles:
     - common
     - docker
 
 - name: Deploy MLflow
-  hosts: oci-training
+  hosts: mlflow_local
   become: true
   roles:
     - mlflow
 
 - name: Prepare training environment
-  hosts: oci-training
+  hosts: training_local
   become: true
   roles:
     - training

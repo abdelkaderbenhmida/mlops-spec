@@ -1,5 +1,5 @@
 ---
-# MLflow role: run `mlflow server` as a Docker container on oci-training.
+# MLflow role: run `mlflow server` as a Docker container on mlflow-server.
 # Backend store = PostgreSQL (local container), artifact store = /mlflow/artifacts.
 # Idempotent — safe to re-run.
 - name: Create MLflow directories

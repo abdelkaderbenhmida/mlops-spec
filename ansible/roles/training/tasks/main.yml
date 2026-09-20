@@ -1,6 +1,6 @@
 ---
 # Training role: install Python 3.11, pip dependencies, copy training scripts,
-# set MLFLOW_TRACKING_URI env var. Runs on oci-training. Idempotent.
+# set MLFLOW_TRACKING_URI env var. Runs on mlflow-server. Idempotent.
 - name: Install Python 3.11 and pip
   apt:
     name:

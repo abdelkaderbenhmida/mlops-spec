@@ -1,15 +1,14 @@
 ---
-# Monitoring playbook: runs monitoring on oci-monitoring.
-# Usage: ansible-playbook -i inventory/hosts.yml monitoring.yml
-- name: Bootstrap OCI monitoring server
-  hosts: oci-monitoring
+# Monitoring playbook: runs monitoring on monitoring_local.
+- name: Bootstrap local monitoring server
+  hosts: monitoring_local
   become: true
   roles:
     - common
     - docker
 
 - name: Deploy monitoring stack
-  hosts: oci-monitoring
+  hosts: monitoring_local
   become: true
   roles:
     - monitoring

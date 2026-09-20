@@ -1,6 +1,10 @@
 # Enterprise Upgrade — From "Two Clouds Because It Looks Impressive" to a Cloud-Portable ML Platform
 
-> Target product name: **Ferry** — a provably portable ML platform for EU financial services
+> ⚠️ **LEGACY — ALL-LOCAL** : Since the refonte, Ferry is **100% local** (no cloud). See
+> [`README.md`](./README.md). This document is the historical multi-cloud upgrade path
+> (GCP + OCI + DORA) and is kept for reference only; it no longer reflects the shipped stack.
+
+> (legacy) Target product name: **Ferry** — a provably portable ML platform for EU financial services
 > operating under DORA cloud-concentration and exit-strategy requirements.
 >
 > This document rewrites `mlops-platform-spec.md`. The infrastructure choices stay almost

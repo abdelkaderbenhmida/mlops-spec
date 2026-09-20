@@ -11,9 +11,9 @@ common_packages:
 
 node_exporter_version: 1.7.0
 
-# Host-level UFW allowance. Cloud firewalls (GCP/OCI) are the real policy;
-# UFW here is defense in depth. Per the spec the node exporter port is
-# restricted to the OCI monitoring IP at the cloud-firewall layer.
+# Host-level UFW allowance. ALL-LOCAL — no cloud firewall; UFW is the only
+# policy layer. Ports serve the local stack (node exporter, MLflow, Prometheus,
+# Grafana).
 ufw_allow_ports:
   - "22"
   - "9100"

@@ -106,7 +106,7 @@
 # ---------------------------------------------------------------------------
 - name: Set control plane host
   set_fact:
-    k8s_cp_host: "{{ groups['gcp_k8s'][0] }}"
+    k8s_cp_host: "{{ groups['k8s_local'][0] }}"
 
 - name: "kubeadm init on control plane ({{ k8s_cp_host }})"
   command: >
@@ -144,7 +144,7 @@
 - name: Expose join command to all hosts
   set_fact:
     k8s_join_command: "{{ hostvars[k8s_cp_host].join_command.stdout | default('') }}"
-  when: inventory_hostname in groups['gcp_k8s']
+  when: inventory_hostname in groups['k8s_local']
 
 # ---------------------------------------------------------------------------
 # Workers
@@ -155,7 +155,7 @@
     creates: /etc/kubernetes/kubelet.conf
   register: kubeadm_join
   when:
-    - inventory_hostname in groups['gcp_k8s']
+    - inventory_hostname in groups['k8s_local']
     - inventory_hostname != k8s_cp_host
 
 - name: Wait for all nodes to become Ready

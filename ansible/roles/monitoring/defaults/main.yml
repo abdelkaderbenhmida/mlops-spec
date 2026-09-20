@@ -6,14 +6,14 @@ grafana_image: grafana/grafana:10.3.3
 prometheus_port: 9090
 grafana_port: 3000
 
-# Scrape targets. Overridden by the playbook from Terraform outputs.
+# Scrape targets. ALL-LOCAL — every node maps to localhost.
 prometheus_scrape_targets:
-  node_gcp:
-    - "gcp-k8s-cp:9100"
-    - "gcp-k8s-w1:9100"
-    - "gcp-k8s-w2:9100"
-  node_oci:
-    - "oci-training:9100"
-    - "oci-monitoring:9100"
+  node_local:
+    - "k8s-cp:9100"
+    - "k8s-w1:9100"
+    - "k8s-w2:9100"
+    - "mlflow-server:9100"
+    - "monitoring-server:9100"
+    - "training-env:9100"
   churn_api:
-    - "gcp-lb:80"
+    - "localhost:8000"

@@ -1,6 +1,10 @@
 # Deployment Guide
 
-End-to-end deployment of **Ferry**, the cloud-portable ML platform for policy lapse and
+> ⚠️ **ALL-LOCAL — deployment actuel** : la plateforme est **100% locale** (Terraform provider
+> Docker + Docker Compose + Ansible inventaire local). Voir [`README.md`](../README.md). Ce
+> guide décrit la procédure **multi-cloud legacy** (GCP + OCI), conservée à titre de référence.
+
+> (legacy) End-to-end deployment of **Ferry**, the cloud-portable ML platform for policy lapse and
 renewal-risk prediction, following the order defined in
 [`mlops-platform-spec.md` §Deployment Order](../mlops-platform-spec.md):
 

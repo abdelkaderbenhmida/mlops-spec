@@ -1,6 +1,12 @@
 # Architecture
 
-This document describes the architecture of **Ferry**, a cloud-portable ML platform for
+> ⚠️ **ALL-LOCAL (disponible aussi en [README](./README.md))** — Ce document décrit
+> l'architecture **multi-cloud legacy** (GCP + OCI + DORA) de Ferry. Depuis la refonte,
+> **Ferry est 100% local** : aucune dépendance cloud, infrastructure provisionnée sur le
+> daemon Docker local via Terraform, inventaire Ansible pointant tout sur `127.0.0.1`,
+> monitoring loopback. Ce document est conservé comme référence historique.
+
+> (legacy) This document describes the architecture of **Ferry**, a cloud-portable ML platform for
 policy lapse and renewal-risk prediction in European financial services: the components,
 their responsibilities, the data and control flows between them, and the cross-cloud
 networking model.

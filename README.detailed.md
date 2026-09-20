@@ -1,37 +1,36 @@
-# Ferry — Plateforme ML Portable Multi-Cloud (README détaillé)
+# Ferry — Plateforme MLOps 100 % Locale (README détaillé)
 
 > Documentation complète du code source de **Ferry** (répertoire `mlops-platform-spec`) :
 > description, outils, fonctionnement et procédure de test. Complète la
-> [README principale](./README.md) et la [spec](./mlops-platform-spec.md).
+> [README principale](./README.md).
 >
-> **⚠️ IMPORTANT — Écart spec / code** : les docs (README, spec, ENTERPRISE-UPGRADE, docs/)
-> décrivent le design cible **"Ferry"** (symétrique GCP+OCI, modèle de doléance d'assurance,
-> IPsec, exit drills, portability contract, Helm, MLflow sur stockage S3-compatible). Le code
-> **implémenté** correspond à un design **asymétrique antérieur** : crédit (German Credit Data)
-> + churn API, un seul VM d'entraînement MLflow sur OCI. Les artefacts référencés
-> (`helm/lapse-api`, `portability-contract.yaml`, `exit-drills/`, `retention_feedback.py`,
-> `terraform/control`, `terraform/ipsec`) sont **absents** — les docs sont aspirationnelles pour
-> la montée en version enterprise.
+> **⚠️ ALL-LOCAL** : depuis la refonte, Ferry est une plateforme **entièrement locale** —
+> aucune dépendance cloud, aucun fournisseur, aucune API propriétaire. L'infrastructure
+> (réseau, volumes, Postgres, MLflow) est provisionnée en local via Terraform (provider
+> Docker), l'inventaire Ansible pointe tout sur `127.0.0.1` en connexion locale, et
+> Prometheus/Grafana ne scrapent que des cibles loopback. L'ancienne variante multi-cloud
+> (GCP + OCI + DORA + portability contract) a été **supprimée**.
 
 ---
 
 ## 1. Vue d'ensemble
 
-**Objectif déclaré (Ferry)** : un ML platform **portable entre deux clouds** (GCP + OCI) pour
-la prévision de **lapse / renouvellement d'assurance** en finance européenne sous **DORA**.
-La justification "pourquoi deux clouds ?" : les entités financières UE doivent prouver leur
-capacité à **quitter un fournisseur cloud** (DORA Art. 28 sorties, Art. 29 risque de
-concentration) — et la seule preuve crédible est de le faire, en continu, dans la CI.
+Ferry est un pipeline ML complet (train → track → serve → monitor) qui tourne
+**localement**, sans cloud. Le but : démontrer le cycle de vie MLOps avec des composants
+auto-hébergés et provider-neutres — c'est la même stack qu'une équipe on-premise ou air-gapped
+utiliserait.
 
-Le **test de sortie est un job de CI** : basculement de 100 % du trafic vers le fournisseur
-survivant en ≤ 4 h (RTO, ≤ 15 min RPO), avec un **Exit Drill Report** signé chaque mois.
+**Le promesse tenable de Ferry** :
+
+> Tout — orchestration, tracking, serving, monitoring, CI/CD — tourne sur des ressources
+> locales. Aucune compte cloud, aucun service managé, aucune API propriétaire.
 
 ### Ce que contient réellement le code
 
 Un pipeline crédit (RandomForest/GradientBoosting sur German Credit Data) servi par FastAPI,
-avec : Terraform multi-cloud (modules GCP/OCI), Ansible (roles kubernetes/mlflow/monitoring/
-training), Kubernetes (déploiement churn), Prometheus/Grafana, k6, Jenkins, une suite de
-tests pytest, et une UI de dashboard.
+avec : Terraform local (provider Docker), Ansible (roles kubernetes/mlflow/monitoring/
+training, inventaire local), Kubernetes (déploiement churn), Prometheus/Grafana, k6, Jenkins,
+une suite de tests pytest, et une UI de dashboard.
 
 ---
 
@@ -39,18 +38,17 @@ tests pytest, et une UI de dashboard.
 
 | Domaine | Outil | Rôle |
 |---|---|---|
-| Infrastructure-as-Code | **Terraform** | Modules partagés `network` + `vm` ; implémentations `gcp/` et `oracle/` |
-| Config management | **Ansible** | Roles idempotents (common, docker, kubernetes, mlflow, monitoring, training) |
-| Conteneurs | **Docker** | Image API multi-stage non-root |
-| Orchestration | **Kubernetes** (kubeadm 1.28 self-managed) | Namespace `mlops`, deployment `churn-api`, HPA |
+| Infrastructure-as-Code | **Terraform** (provider Docker) | Réseau local, volumes, Postgres, MLflow |
+| Config management | **Ansible** (connection local) | Roles idempotents (common, docker, kubernetes, mlflow, monitoring, training) |
+| Conteneurs | **Docker (+ Compose)** | Stack locale (Postgres, MLflow, train, API) |
+| Orchestration | **Kubernetes** (kubeadm self-managed) | Namespace `mlops`, deployment `churn-api`, HPA |
 | CI/CD | **Jenkins** | Pipeline : test → train → build → push → deploy |
 | Tracking/Registry | **MLflow** (2.10) | Log runs + registry model (churn-model) |
 | Serving | **FastAPI + Uvicorn** | `/health`, `/predict`, `/history`, `/stats`, `/model-info` |
 | DB | **PostgreSQL** + SQLAlchemy | Table `predictions` (ou SQLite fallback) |
-| Metrics | **Prometheus + Grafana** (federated) | node_exporter, dashboards API |
+| Metrics | **Prometheus + Grafana** | node_exporter, dashboards API (cibles loopback) |
 | Load test | **k6** | 20 VUs, 2 min, seuils p95<1000ms + rate<0.01 |
 | ML | **scikit-learn** | GradientBoosting (crédit), churn RF |
-| Secrets (K8s) | Secret Postgres (⚠️ hardcodé "change-me-in-production") | À remplacer |
 
 ---
 
@@ -72,7 +70,7 @@ ferry/  (mlops-platform-spec/)
 │   └── data/
 │       ├── generate_credit_data.py  # parse UCI German Credit Data
 │       ├── generate_fraud_data.py   # 100K transactions fraude (~10%)
-│       ├── churn.csv, credit.csv, fraud.csv
+│       └── churn.csv, credit.csv, fraud.csv
 ├── tests/
 │   ├── conftest.py             # sys.path bootstrap (repo root, api/, ml/, tests/)
 │   ├── _data.py                # données German Credit synthétiques
@@ -82,19 +80,20 @@ ferry/  (mlops-platform-spec/)
 │   ├── test_train_pipeline.py  # train→register→artifact (tmp mlruns)
 │   └── QA-REPORT.md            # bugs trouvés lors du QA
 ├── terraform/
-│   ├── modules/ (network/, vm/)  # multi-cloud (count-switch GCP|OCI)
-│   ├── gcp/                      # VPC 10.0.1.0/24 + 3 VMs k8s (cp/w1/w2)
-│   └── oracle/                   # VCN 10.0.2.0/24 + VMs training/monitoring
+│   ├── main.tf                 # ALL-LOCAL : provider Docker (réseau, volumes, Postgres, MLflow)
+│   ├── variables.tf
+│   └── outputs.tf
 ├── kubernetes/
 │   ├── namespace.yaml, configmap.yaml
 │   ├── api/ (deployment, service, ingress, hpa)
 │   └── database/ (statefulset, pvc, service, init-configmap)
 ├── ansible/
-│   ├── inventory/hosts.yml
+│   ├── inventory/hosts.yml     # tout → 127.0.0.1, ansible_connection: local
 │   ├── playbooks/ (site, ml, k8s, monitoring)
 │   └── roles/ (common, docker, kubernetes, mlflow, monitoring, training)
 ├── monitoring/
 │   ├── prometheus.yml, grafana/dashboards/ml-api-dashboard.json, k6/loadtest.js
+├── docker/compose.local.yml    # Postgres + MLflow + train + api
 ├── docker/api/Dockerfile
 ├── jenkins/Jenkinsfile
 ├── ui/index.html               # dashboard "Credit Risk"
@@ -133,23 +132,23 @@ sur le split de test. **Exit 0 si AUC≥0.75 et F1≥0.30, sinon exit 1** (fait 
   `/model-info`, `/` (sert `ui/index.html`), mount `/ui`.
 - `api/db.py` : persistance SQLAlchemy optionnelle (Postgres via env, fallback SQLite).
 - `api/model.py` : chemin alternatif — chargement depuis **MLflow registry** (`load_model`,
-  `get_latest_versions` Production/Staging/None) ; non branché sur `main.py` courant.
+  `get_latest_versions` Production/Staging/None).
 
-### 4.5 Infrastructure (Terraform multi-cloud)
+### 4.5 Infrastructure (Terraform local)
 
-- Module `network` : createur VPC (GCP) ou VCN (OCI) selon `count` (var `cloud`).
-- Module `vm` : instance GCP/OCI avec IP interne, clé SSH, script de démarrage optionnel.
-- `gcp/` : 3 VMs k8s (cp 10.0.1.10, w1 .11, w2 .12), tags control-plane/worker.
-- `oracle/` : 2 VMs (training 10.0.2.10, monitoring 10.0.2.11), security list [22,5000,9090,3000].
+- `terraform/main.tf` : provider `kreuzwerker/docker` sur le daemon local.
+- Réseau `mlops-local-net`, volumes `mlops-local-pg-data` + `mlops-local-mlflow-artifacts`.
+- Conteneurs `mlops-local-postgres` (postgres:16, healthcheck pg_isready) et
+  `mlops-local-mlflow` (backend Postgres, artifact-root local `/opt/mlflow/artifacts`).
+- Aucun cloud, aucune credentials, aucun remote state.
 
-### 4.6 Configuration (Ansible)
+### 4.6 Configuration (Ansible, ALL-LOCAL)
 
+- Inventaire : chaque hôte logique → `127.0.0.1`, `ansible_connection: local`.
 - `common` : timezone UTC, packages, node_exporter + UFW (ports 22/9100/5000/9090/3000).
-- `docker` : Docker CE 26.1.4, cgroupdriver systemd, log max-size 10m.
-- `kubernetes` : swap off, kernel modules, kubeadm/kubelet/kubectl 1.28, `kubeadm init
-  --pod-network-cidr=192.168.0.0/16`, Calico CNI, join workers, wait Ready.
-- `mlflow` : 2 conteneurs (postgres backend-binder 127.0.0.1:5432 + serveur mlflow :5000,
-  artifact-root **disque local** `/mlflow/artifacts`).
+- `docker` : Docker CE, cgroupdriver systemd, log max-size 10m.
+- `kubernetes` : swap off, kernel modules, kubeadm 1.28, Calico CNI, join workers, wait Ready.
+- `mlflow` : serveur MLflow :5000, artifact-root disque local.
 - `monitoring` : prometheus :9090 + grafana :3000 (datasource + dashboard).
 - `training` : venv `/opt/ml-env`, copie train/evaluate/preprocess + churn.csv.
 
@@ -162,7 +161,7 @@ Service ClusterIP, Ingress nginx, HPA (min 2 max 8 CPU 60 %), StatefulSet Postgr
 ### 4.8 CI/CD (Jenkins)
 
 `jenkins/Jenkinsfile` : Checkout → Test (`pytest api/ tests/` + `python3 ml/evaluate.py`) →
-Train (ssh oci-training) → Build (`docker build -t ...:BUILD_NUMBER`) → Push → Deploy
+Train (local) → Build (`docker build -t ...:BUILD_NUMBER`) → Deploy
 (`kubectl set image deployment/churn-api` + rollout).
 
 ---
@@ -181,13 +180,11 @@ python -m pytest tests/test_train_pipeline.py  # train→register→artifact end
 ```
 
 - `tests/conftest.py` insère repo root, `api/`, `ml/`, `tests/` dans `sys.path`.
-- `tests/test_api.py` : charge une petite GradientBoosting via `install_trained_model`
-  (monkeypatch), teste 200 valide / 422 champs manquants / 422 catégorie inconnue.
 - Le gate CI `ml/evaluate.py` sort en code non nul si AUC < 0.75 ou F1 < 0.30.
 
 **Validation statique / infra** :
 ```bash
-terraform validate         # dans terraform/ (init -backend=false)
+terraform validate -backend=false   # dans terraform/ (provider Docker, pas de remote state)
 ansible-playbook --syntax-check site.yml   # dans ansible/
 ```
 
@@ -195,30 +192,21 @@ ansible-playbook --syntax-check site.yml   # dans ansible/
 
 ## 6. Points d'attention (audit du code)
 
-> Extraits de `tests/QA-REPORT.md`, à corriger pour aligner le code sur la spec "Ferry".
-
-1. **Écart spec/code majeur** : le code est crédit/churn asymétrique ; la spec décrit un
-   design Ferry symétrique (lapse, IPsec, exit drills, Helm, portability contract) **non
-   implémenté**.
-2. **Secrets hardcodés** (H1) : `api/db.py` mot de passe défaut `postgres` ;
+1. **Secrets hardcodés** : `api/db.py` mot de passe par défaut `postgres` ;
    `kubernetes/database/statefulset.yaml` `change-me-in-production` ; IPs placeholder dans
-   `Jenkinsfile`/`configmap`.
-3. **DB dans le chemin de requête** (H2) : le `/predict` référencé dans QA-REPORT écrit en DB
-   dans le chemin (risque 500 si Postgres down) ; le `main.py` courant ne l'écrit pas.
-4. **Mapping de champs** (H4, corrigé) : l'API snake_case vs CSV PascalCase causait un 500.
-5. **MI** : les encodeurs sont ré-ajustés par requête ; **M2** : chemins relatifs dans
+   `Jenkinsfile`/`configmap`. À externaliser en secrets locaux.
+2. **DB dans le chemin de requête** : le `/predict` peut écrire en DB (risque 500 si Postgres
+   down) ; le `main.py` courant ne l'écrit pas systématiquement.
+3. **MI** : les encodeurs sont ré-ajustés par requête ; **M2** : chemins relatifs dans
    `train.py` (dépendant du CWD) ; **M3** : crash roc_auc single-class ; **M4** : double encode
    dans `evaluate.py` ; **M5** : imports absolus cassent `import api.main`.
-6. **Chemin MLflow vs churn** : le role Ansible MLflow tourne sur le VM **training** (pas un
-   control plane neutre) et son artifact-root est **disque local**, pas S3-compatible comme
-   mandate la spec.
 
 ---
 
 ## 7. Références
 
-- [README principale](./README.md) — vue d'ensemble Ferry.
-- [`mlops-platform-spec.md`](./mlops-platform-spec.md) — spec de référence (843 lignes).
-- [`ENTERPRISE-UPGRADE.md`](./ENTERPRISE-UPGRADE.md) — transition vers le design portable.
+- [README principale](./README.md) — vue d'ensemble Ferry (ALL-LOCAL).
+- [`mlops-platform-spec.md`](./mlops-platform-spec.md) — spec de référence (legacy, à relire
+  comme historique de la refonte).
 - `tests/QA-REPORT.md` — bugs identifiés en QA.
 - `docs/PRD.md` — PRD initial (crédit risk) ; `docs/architecture.md`, `docs/deployment.md`.
