@@ -1,23 +1,28 @@
+# All-local Prometheus configuration: scrapes the local stack only
+# (docker/compose.local.yml + any node_exporter on the host). No cloud IPs.
+
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: node_gcp
+  - job_name: node_local
     static_configs:
       - targets:
-          - '<gcp-cp-ip>:9100'
-          - '<gcp-w1-ip>:9100'
-          - '<gcp-w2-ip>:9100'
+          - 'localhost:9100'
 
-  - job_name: node_oci
+  - job_name: mlflow
     static_configs:
       - targets:
-          - '<oci-training-ip>:9100'
-          - '<oci-monitoring-ip>:9100'
+          - 'localhost:5000'
 
   - job_name: churn_api
     metrics_path: /metrics
     static_configs:
       - targets:
-          - '<gcp-lb-ip>:80'
+          - 'localhost:8000'
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - 'localhost:9090'

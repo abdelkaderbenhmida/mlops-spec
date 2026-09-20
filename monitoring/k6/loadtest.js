@@ -10,7 +10,7 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'http://<gcp-lb-ip>';
+const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8000';
 
 const predictPayload = {
   tenure: 12,
